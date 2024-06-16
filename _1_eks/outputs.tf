@@ -66,7 +66,7 @@ output "ec2_bastion_public_instance_ids" {
 ## ec2_bastion_public_ip
 output "ec2_bastion_public_ip" {
   description = "Elastic IP associated to the Bastion Host"
-  value       = aws_eip.bastion_eip.public_ip
+  value       = try(aws_eip.bastion_eip[0].public_ip, "")
 }
 
 # EKS Cluster Outputs
@@ -116,6 +116,7 @@ output "cluster_primary_security_group_id" {
   value       = aws_eks_cluster.eks_cluster.vpc_config[0].cluster_security_group_id
 }
 
+/*
 # EKS Node Group Outputs - Public
 output "node_group_public_id" {
   description = "Public Node Group ID"
@@ -136,9 +137,10 @@ output "node_group_public_version" {
   description = "Public Node Group Kubernetes Version"
   value       = aws_eks_node_group.eks_ng_public.version
 }
+*/
 
 # EKS Node Group Outputs - Private
-/*
+
 output "node_group_private_id" {
   description = "Node Group 1 ID"
   value       = aws_eks_node_group.eks_ng_private.id
@@ -151,7 +153,7 @@ output "node_group_private_arn" {
 
 output "node_group_private_status" {
   description = "Private Node Group status"
-  value       = aws_eks_node_group.eks_ng_private.status 
+  value       = aws_eks_node_group.eks_ng_private.status
 }
 
 output "node_group_private_version" {
@@ -159,4 +161,3 @@ output "node_group_private_version" {
   value       = aws_eks_node_group.eks_ng_private.version
 }
 
-*/

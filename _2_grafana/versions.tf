@@ -1,6 +1,6 @@
 terraform {
   backend "s3" {
-    bucket         = "nimbus-tfstate"
+    bucket         = "observability-tfstate-bucky"
     region         = "us-east-1"
     key            = "grafana_module/terraform.tfstate"
     dynamodb_table = "nimbus-state-lock"

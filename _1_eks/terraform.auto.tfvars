@@ -12,6 +12,7 @@ cluster_endpoint_public_access_cidrs = ["0.0.0.0/0"]
 
 
 # Generic Variables
+account_id       = "058264194719"
 aws_region       = "us-east-1"
 environment      = "dev"
 business_divsion = "meda"

@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  annotations:
+    eks.amazonaws.com/role-arn: arn:aws:iam::058264194719:role/meda-dev-mule-s3-role-test
+  name: s3-sa
+  namespace: grafana

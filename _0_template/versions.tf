@@ -1,6 +1,6 @@
 terraform {
   backend "s3" {
-    bucket         = "nimbus-tfstate"
+    bucket         = "observability-tfstate-bucky"
     region         = "us-east-1"
     key            = "test/terraform.tfstate"
     dynamodb_table = "nimbus-state-lock"
@@ -15,6 +15,10 @@ terraform {
       source  = "hashicorp/aws"
       version = "5.53.0"
     }
+    helm = {
+      source  = "hashicorp/helm"
+      version = "2.13.2"
+    }
   }
 }
 
@@ -22,6 +26,14 @@ provider "kubernetes" {
   host                   = data.terraform_remote_state.eks.outputs.cluster_endpoint
   cluster_ca_certificate = base64decode(data.terraform_remote_state.eks.outputs.cluster_certificate_authority_data)
   token                  = data.aws_eks_cluster_auth.cluster.token
+}
+
+provider "helm" {
+  kubernetes {
+    host                   = data.terraform_remote_state.eks.outputs.cluster_endpoint
+    cluster_ca_certificate = base64decode(data.terraform_remote_state.eks.outputs.cluster_certificate_authority_data)
+    token                  = data.aws_eks_cluster_auth.cluster.token
+  }
 }
 
 provider "aws" {
