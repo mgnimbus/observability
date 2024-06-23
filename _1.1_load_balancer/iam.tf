@@ -248,7 +248,7 @@ resource "aws_iam_policy" "irsa_lbc_policy" {
 }
 
 resource "aws_iam_role" "irsa_lbc_role" {
-  name = "${local.name}-AWSLoadBalancerControllerIAMRole"
+  name = "${local.name}-lbc-cont-role"
 
   assume_role_policy = <<POLICY
 {
@@ -278,17 +278,19 @@ resource "aws_iam_role_policy_attachment" "EKSAmazonLBCRole" {
   role       = aws_iam_role.irsa_lbc_role.name
 }
 
-data "template_file" "service_account_yaml" {
-  template = file("${path.module}/manifests/lbc_sa.yml.tpl")
 
-  vars = {
-    irsa_lbc_role_arn    = aws_iam_role.irsa_lbc_role.arn
-    service_account_name = var.service_account_name
-    namespace            = var.namespace
-  }
-}
+# we are creating a service account for lb with helm chart
+# data "template_file" "service_account_yaml" {
+#   template = file("${path.module}/manifests/lbc_sa.yml.tpl")
 
-resource "local_file" "rendered_service_account_yaml" {
-  content  = data.template_file.service_account_yaml.rendered
-  filename = "${path.module}/manifests/lbc_sa.yml"
-}
+#   vars = {
+#     irsa_lbc_role_arn    = aws_iam_role.irsa_lbc_role.arn
+#     service_account_name = var.service_account_name
+#     namespace            = var.namespace
+#   }
+# }
+
+# resource "local_file" "rendered_service_account_yaml" {
+#   content  = data.template_file.service_account_yaml.rendered
+#   filename = "${path.module}/manifests/lbc_sa.yml"
+# }

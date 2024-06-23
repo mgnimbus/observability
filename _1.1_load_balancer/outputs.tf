@@ -8,3 +8,7 @@ output "lbc_helm_metadata" {
   description = "Metadata Block outlining status of the deployed release."
   value       = helm_release.aws_lb_controller.metadata
 }
+
+output "subii" {
+  value = data.terraform_remote_state.eks.outputs.private_subnets
+}

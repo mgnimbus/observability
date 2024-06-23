@@ -1,7 +1,0 @@
-apiVersion: v1
-kind: ServiceAccount
-metadata:
-  annotations:
-    eks.amazonaws.com/role-arn: arn:aws:iam::328268088738:role/meda-dev-wahoo-s3-role-test
-  name: s3-sa
-  namespace: grafana

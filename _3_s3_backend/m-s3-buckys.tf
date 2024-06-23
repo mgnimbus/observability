@@ -12,7 +12,9 @@ locals {
   observability_buckets = [
     "loki-index",
     "loki-chunks",
-    "loki-ruler"
+    "loki-ruler",
+    "mimir-chunks",
+    "mimir-index"
   ]
 }
 

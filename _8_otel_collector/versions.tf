@@ -2,7 +2,7 @@ terraform {
   backend "s3" {
     bucket         = "observability-tfstate-bucky"
     region         = "us-east-1"
-    key            = "test/terraform.tfstate"
+    key            = "otel-collector/terraform.tfstate"
     dynamodb_table = "nimbus-state-lock"
     encrypt        = true
   }
@@ -21,7 +21,7 @@ terraform {
     }
     kubectl = {
       source  = "gavinbunney/kubectl"
-      version = ">= 1.7.0"
+      version = "1.14.0"
     }
   }
 }
@@ -39,13 +39,6 @@ provider "helm" {
     token                  = data.aws_eks_cluster_auth.cluster.token
   }
 }
-
-provider "kubectl" {
-  host                   = data.terraform_remote_state.eks.outputs.cluster_endpoint
-  cluster_ca_certificate = base64decode(data.terraform_remote_state.eks.outputs.cluster_certificate_authority_data)
-  token                  = data.aws_eks_cluster_auth.cluster.token
-}
-
 
 provider "aws" {
   region = var.region

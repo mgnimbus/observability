@@ -1,5 +1,6 @@
 # Install AWS ELB Controller using HELM
 # Resource: Helm Release 
+/*
 resource "helm_release" "aws_lb_controller" {
   depends_on = [aws_iam_role.irsa_lbc_role]
   name       = "aws-load-balancer-controller"
@@ -43,4 +44,20 @@ resource "helm_release" "aws_lb_controller" {
     name  = "clusterName"
     value = data.terraform_remote_state.eks.outputs.cluster_id
   }
+}
+*/
+resource "helm_release" "aws_lb_controller" {
+  name      = "aws-load-balancer-controller"
+  namespace = var.namespace
+
+  repository = "https://aws.github.io/eks-charts"
+  chart      = "aws-load-balancer-controller"
+
+  values = [templatefile("${path.module}/manifests/values.yaml", {
+    role_arn             = aws_iam_role.irsa_lbc_role.arn
+    vpc_id               = data.terraform_remote_state.eks.outputs.vpc_id
+    region               = var.region
+    eks_cluster          = data.terraform_remote_state.eks.outputs.cluster_id
+    service_account_name = var.service_account_name
+  })]
 }

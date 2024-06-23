@@ -2,7 +2,7 @@ terraform {
   backend "s3" {
     bucket         = "observability-tfstate-bucky"
     region         = "us-east-1"
-    key            = "test/terraform.tfstate"
+    key            = "crds/terraform.tfstate"
     dynamodb_table = "nimbus-state-lock"
     encrypt        = true
   }
@@ -21,7 +21,7 @@ terraform {
     }
     kubectl = {
       source  = "gavinbunney/kubectl"
-      version = ">= 1.7.0"
+      version = "1.14.0"
     }
   }
 }

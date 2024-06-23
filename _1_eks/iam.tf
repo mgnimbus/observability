@@ -69,4 +69,40 @@ resource "aws_iam_role_policy_attachment" "eks-AmazonEC2ContainerRegistryReadOnl
   policy_arn = "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly"
   role       = aws_iam_role.eks_nodegroup_role.name
 }
-  
+
+resource "aws_iam_role_policy_attachment" "eks-AmazonEKS_AS_Policy" {
+  policy_arn = aws_iam_policy.auto_scalling_policy.arn
+  role       = aws_iam_role.eks_nodegroup_role.name
+}
+
+resource "aws_iam_policy" "auto_scalling_policy" {
+  name = "${local.name}_auto_scalling_policy"
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        "Effect" : "Allow",
+        "Action" : [
+          "autoscaling:DescribeAutoScalingGroups",
+          "autoscaling:DescribeAutoScalingInstances",
+          "autoscaling:DescribeLaunchConfigurations",
+          "autoscaling:DescribeScalingActivities",
+          "ec2:DescribeInstanceTypes",
+          "ec2:DescribeLaunchTemplateVersions"
+        ],
+        "Resource" : ["*"]
+      },
+      {
+        "Effect" : "Allow",
+        "Action" : [
+          "autoscaling:SetDesiredCapacity",
+          "autoscaling:TerminateInstanceInAutoScalingGroup"
+        ],
+        "Resource" : ["*"]
+      },
+    ]
+  })
+}
+
+
+

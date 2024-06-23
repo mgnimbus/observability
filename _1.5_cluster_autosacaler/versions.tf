@@ -2,7 +2,7 @@ terraform {
   backend "s3" {
     bucket         = "observability-tfstate-bucky"
     region         = "us-east-1"
-    key            = "test/terraform.tfstate"
+    key            = "autoscaler/terraform.tfstate"
     dynamodb_table = "nimbus-state-lock"
     encrypt        = true
   }

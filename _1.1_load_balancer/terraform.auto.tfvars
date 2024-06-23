@@ -5,4 +5,4 @@ environment      = "dev"
 business_divsion = "meda"
 
 namespace            = "kube-system"
-service_account_name = "aws-load-balancer-controller"
+service_account_name = "aws-loadbalancer-sa"
