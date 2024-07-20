@@ -550,7 +550,7 @@ controller:
       udp: {}
     internal:
       # -- Enable the internal controller service or not. Remember to configure `controller.service.internal.annotations` when enabling this.
-      enabled: true
+      enabled: false
       # -- Annotations to be added to the internal controller service. Mandatory for the internal controller service to be created. Varies with the cloud service.
       # Ref: https://kubernetes.io/docs/concepts/services-networking/service/#internal-load-balancer
       annotations:

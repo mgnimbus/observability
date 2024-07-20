@@ -161,3 +161,8 @@ output "node_group_private_version" {
   value       = aws_eks_node_group.eks_ng_private.version
 }
 
+output "ebs_storage_class_name" {
+  description = "Name of the EBS Storage class name"
+  value       = kubernetes_storage_class_v1.ebs_sc.metadata[0].name
+
+}

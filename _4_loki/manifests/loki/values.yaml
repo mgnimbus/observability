@@ -17,6 +17,15 @@ loki:
   querier:
     max_concurrent: 4
 
+serviceAccount:
+  create: true
+  name: loki-s3
+  imagePullSecrets: []
+  labels: {}
+  annotations:
+    ks.amazonaws.com/role-arn: ${role_arn}
+  automountServiceAccountToken: true
+
   storage:
     type: s3
     bucketNames:

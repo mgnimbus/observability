@@ -49,6 +49,7 @@ serviceAccount:
 replicas: 1
 
 ## Create a headless service for the deployment
+headlessService: false
 
 ## Should the service account be auto mounted on the pod
 automountServiceAccountToken: true
@@ -223,8 +224,15 @@ gossipPortName: gossip
 ##
 service:
   enabled: true
-  type: NodePort
-  port: 3000
+  type: LoadBalancer
+  # Set the ip family policy to configure dual-stack see [Configure dual-stack](https://kubernetes.io/docs/concepts/services-networking/dual-stack/#services)
+  ipFamilyPolicy: ""
+  # Sets the families that should be supported and the order in which they should be applied to ClusterIP as well. Can be IPv4 and/or IPv6.
+  ipFamilies: []
+  loadBalancerIP: ""
+  loadBalancerClass: ""
+  loadBalancerSourceRanges: []
+  port: 80
   targetPort:
     3000
     # targetPort: 4181 To be used with a proxy extraContainer
@@ -265,14 +273,17 @@ hostAliases:
   #     - "my.host.com"
 
 ingress:
-  enabled: false
+  enabled: true
   # For Kubernetes >= 1.18 you should specify the ingress-controller via the field ingressClassName
   # See https://kubernetes.io/blog/2020/04/02/improvements-to-the-ingress-api-in-kubernetes-1.18/#specifying-the-class-of-an-ingress
-  # ingressClassName: nginx
+  ingressClassName: nginx
   # Values can be templated
   annotations:
-    {}
-    # kubernetes.io/ingress.class: nginx
+    kubernetes.io/ingress.class: nginx
+    service.beta.kubernetes.io/aws-load-balancer-ssl-cert: arn:aws:acm:us-east-1:180789647333:certificate/d86de939-8ffd-410f-adce-0ce1f5be6e0d
+    service.beta.kubernetes.io/aws-load-balancer-ssl-ports: 443, # Specify this annotation if you need both TLS and non-TLS listeners on the same load balancer
+    service.beta.kubernetes.io/aws-load-balancer-ssl-negotiation-policy: ELBSecurityPolicy-TLS13-1-2-2021-06
+    service.beta.kubernetes.io/aws-load-balancer-backend-protocol: tcp 
     # kubernetes.io/tls-acme: "true"
   labels: {}
   path: /
@@ -281,7 +292,7 @@ ingress:
   pathType: Prefix
 
   hosts:
-    - chart-example.local
+    - grafana.varidha.com
   ## Extra paths to prepend to every host configuration. This is useful when working with annotation based services.
   extraPaths: []
   # - path: /*
@@ -366,7 +377,7 @@ extraContainerVolumes: []
 ##
 persistence:
   type: pvc
-  enabled: false
+  enabled: true
   storageClassName: obsrv-sc
   accessModes:
     - ReadWriteOnce
@@ -393,6 +404,10 @@ persistence:
     ## here and the sum of memory limits of all containers in a pod
     ##
     # sizeLimit: 300Mi
+
+  ## If 'lookupVolumeName' is set to true, Helm will attempt to retrieve
+  ## the current value of 'spec.volumeName' and incorporate it into the template.
+  lookupVolumeName: true
 
 initChownData:
   ## If false, data ownership will not be reset at startup
@@ -929,6 +944,19 @@ sidecar:
     enabled: false
     # Additional environment variables for the dashboards sidecar
     env: {}
+    ## "valueFrom" environment variable references that will be added to deployment pods. Name is templated.
+    ## ref: https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.19/#envvarsource-v1-core
+    ## Renders in container spec as:
+    ##   env:
+    ##     ...
+    ##     - name: <key>
+    ##       valueFrom:
+    ##         <value rendered as YAML>
+    envValueFrom: {}
+    #  ENV_NAME:
+    #    configMapKeyRef:
+    #      name: configmap-name
+    #      key: value_key
     # Do not reprocess already processed unchanged resources on k8s API reconnect.
     # ignoreAlreadyProcessed: true
     SCProvider: true
@@ -994,7 +1022,19 @@ sidecar:
     enabled: false
     # Additional environment variables for the datasourcessidecar
     env: {}
+    ## "valueFrom" environment variable references that will be added to deployment pods. Name is templated.
+    ## ref: https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.19/#envvarsource-v1-core
+    ## Renders in container spec as:
+    ##   env:
+    ##     ...
+    ##     - name: <key>
+    ##       valueFrom:
+    ##         <value rendered as YAML>
     envValueFrom: {}
+    #  ENV_NAME:
+    #    configMapKeyRef:
+    #      name: configmap-name
+    #      key: value_key
     # Do not reprocess already processed unchanged resources on k8s API reconnect.
     # ignoreAlreadyProcessed: true
     # label that the configmaps with datasources are marked with
@@ -1253,6 +1293,18 @@ imageRenderer:
   ## ref: https://kubernetes.io/docs/tasks/administer-cluster/configure-multiple-schedulers/
   ##
   # schedulerName: "default-scheduler"
+
+  # Extra configmaps to mount in image-renderer pods
+  extraConfigmapMounts: []
+
+  # Extra secrets to mount in image-renderer pods
+  extraSecretMounts: []
+
+  # Extra volumes to mount in image-renderer pods
+  extraVolumeMounts: []
+
+  # Extra volumes for image-renderer pods
+  extraVolumes: []
 
 networkPolicy:
   ## @param networkPolicy.enabled Enable creation of NetworkPolicy resources. Only Ingress traffic is filtered for now.

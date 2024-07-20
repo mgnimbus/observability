@@ -1,4 +1,4 @@
-output "irsa_s3_iam_role_arn" {
-  description = "IRSA S3 IAM Role ARN"
-  value       = aws_iam_role.irsa_s3_role.arn
+output "lbc_helm_metadata" {
+  description = "Metadata Block outlining status of the deployed release."
+  value       = helm_release.loki.metadata
 }

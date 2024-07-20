@@ -1,17 +1,11 @@
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: grafana
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
   name: grafana-pvc
-  namespace: grafana
 spec:
   accessModes:
     - ReadWriteOnce
-  volumeMode: Filesystem
   storageClassName: obsrv-sc
   resources:
     requests:
@@ -23,7 +17,6 @@ metadata:
   labels:
     app: grafana
   name: grafana
-  namespace: grafana
 spec:
   selector:
     matchLabels:
@@ -41,11 +34,6 @@ spec:
         - name: grafana
           image: grafana/grafana:latest
           imagePullPolicy: IfNotPresent
-          env:
-            - name: GF_SECURITY_ADMIN_USER
-              value: admin
-            - name: GF_SECURITY_ADMIN_PASSWORD
-              value: gowthamm
           ports:
             - containerPort: 3000
               name: http-grafana
@@ -74,28 +62,11 @@ spec:
               memory: 750Mi
           volumeMounts:
             - mountPath: /var/lib/grafana
-              name: grafana-pvc
+              name: grafana-pv
       volumes:
-        - name: grafana-pvc
+        - name: grafana-pv
           persistentVolumeClaim:
             claimName: grafana-pvc
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: grafana
-  namespace: grafana
-spec:
-  type: ClusterIP
-  ports:
-    - port: 3000
-      protocol: TCP
-      targetPort: http-grafana
-      nodePort: 31234
-  selector:
-    app: grafana
-  # sessionAffinity: None
-  # type: LoadBalancer
 ---
 apiVersion: v1
 kind: Service
@@ -110,26 +81,3 @@ spec:
     app: grafana
   sessionAffinity: None
   type: LoadBalancer
-
----
-# apiVersion: v1
-# kind: Service
-# metadata:
-#   name: grafana-nlb
-#   namespace: grafana
-#   annotations:
-#     service.beta.kubernetes.io/aws-load-balancer-type: "external"
-#     service.beta.kubernetes.io/aws-load-balancer-nlb-target-type:
-#       "instance"
-#       # To create Network Load Balancer
-# spec:
-#   type: LoadBalancer # ClusterIp, # NodePort
-#   selector:
-#     app: grafana
-#   ports:
-#     - name: http
-#       port: 80 # Service Port
-#       targetPort: http-grafana # Container Port
-
-
-# kubectl -n grafana exec -it grafana-67484b4458-sp6mw grafana-cli admin reset-admin-password gowthamm

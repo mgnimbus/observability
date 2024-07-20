@@ -21,7 +21,7 @@ metadata:
     alb.ingress.kubernetes.io/healthy-threshold-count: "2"
     alb.ingress.kubernetes.io/unhealthy-threshold-count: "2"
 spec:
-  ingressClassName: my-aws-ingress-class # Ingress Class
+  ingressClassName: nlb # Ingress Class
   defaultBackend:
     service:
       name: app3-nginx-nodeport-service

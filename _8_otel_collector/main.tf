@@ -19,9 +19,10 @@ resource "helm_release" "otel-operator" {
   }
 }
 
-resource "kubectl_manifest" "otel_col_ingress" {
-  yaml_body = templatefile("${path.module}/manifests/ingress.yaml", {
-    meda_domain_name = "varidha.com"
-    }
-  )
-}
+# resource "kubectl_manifest" "otel_col_ingress" {
+#   depends_on = [helm_release.otel-operator]
+#   yaml_body = templatefile("${path.module}/manifests/ingress.yaml", {
+#     meda_domain_name = "varidha.com"
+#     }
+#   )
+# }

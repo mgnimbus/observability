@@ -6,12 +6,17 @@ resource "helm_release" "ingress-nginx" {
   chart            = "ingress-nginx"
   create_namespace = true
 
-  values = [file("${path.module}/manifests/values.yaml")]
+  values = [file("${path.module}/manifests/default.yaml")]
 
   set {
     name  = "controller.replicaCount"
     value = "1"
   }
+  set {
+    name  = "controller.service.internal.annotations.service\\.ingress\\.kubernetes\\.io/subnets"
+    value = yamlencode(data.terraform_remote_state.eks.outputs.private_subnets)
+  }
+
 }
 
 
