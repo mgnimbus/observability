@@ -1,0 +1,24 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: app-ingress
+  namespace: app
+  annotations:
+    # TLS
+    service.beta.kubernetes.io/aws-load-balancer-ssl-cert: arn:aws:acm:us-east-1:058264194719:certificate/442d0a9c-5bb3-43ba-8ad2-27e53a40f0f6
+    service.beta.kubernetes.io/aws-load-balancer-ssl-ports: 443, # Specify this annotation if you need both TLS and non-TLS listeners on the same load balancer
+    service.beta.kubernetes.io/aws-load-balancer-ssl-negotiation-policy: ELBSecurityPolicy-TLS13-1-2-2021-06
+    service.beta.kubernetes.io/aws-load-balancer-backend-protocol: tcp
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: test.varidha.com
+    - http:
+        paths:
+          - path: /test-ingress
+            pathType: Prefix
+            backend:
+              service:
+                name: app3-nginx-deployment-ingress
+                port:
+                  name: http

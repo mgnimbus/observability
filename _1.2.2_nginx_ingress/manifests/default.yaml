@@ -26,9 +26,9 @@ controller:
     ## for backwards compatibility consider setting the full image url via the repository value below
     ## use *either* current default registry/image or repository format or installing chart by providing the values.yaml will fail
     ## repository:
-    tag: "v1.10.1"
-    digest: sha256:e24f39d3eed6bcc239a56f20098878845f62baa34b9f2be2fd2c38ce9fb0f29e
-    digestChroot: sha256:c155954116b397163c88afcb3252462771bd7867017e8a17623e83601bab7ac7
+    tag: "v1.11.1"
+    digest: sha256:e6439a12b52076965928e83b7b56aae6731231677b01e81818bce7fa5c60161a
+    digestChroot: sha256:7cabe4bd7558bfdf5b707976d7be56fd15ffece735d7c90fc238b6eda290fd8d
     pullPolicy: IfNotPresent
     runAsNonRoot: true
     # www-data -> uid 101
@@ -470,7 +470,7 @@ controller:
     enabled: true
     external:
       # -- Enable the external controller service or not. Useful for internal-only deployments.
-      enabled: false
+      enabled: true
     # -- Annotations to be added to the external controller service. See `controller.service.internal.annotations` for annotations to be added to the internal controller service.
     annotations: {}
     # -- Labels to be added to both controller services.
@@ -553,14 +553,11 @@ controller:
       enabled: false
       # -- Annotations to be added to the internal controller service. Mandatory for the internal controller service to be created. Varies with the cloud service.
       # Ref: https://kubernetes.io/docs/concepts/services-networking/service/#internal-load-balancer
-      annotations:
-        service.ingress.kubernetes.io/subnets:
-          - subnet-018afab28c56fd061
-          - subnet-0edae7b28fbe36397
+      annotations: {}
       # -- Type of the internal controller service.
       # Defaults to the value of `controller.service.type`.
       # Ref: https://kubernetes.io/docs/concepts/services-networking/service/#publishing-services-service-types
-      type: LoadBalancer
+      type: ""
       # -- Pre-defined cluster internal IP address of the internal controller service. Take care of collisions with existing services.
       # This value is immutable. Set once, it can not be changed without deleting and re-creating the service.
       # Ref: https://kubernetes.io/docs/concepts/services-networking/service/#choosing-your-own-ip-address

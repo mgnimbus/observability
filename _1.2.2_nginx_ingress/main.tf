@@ -9,6 +9,11 @@ resource "helm_release" "ingress-nginx" {
   values = [file("${path.module}/manifests/default.yaml")]
 
   set {
+    name  = "service.type"
+    value = "ClusterIP"
+  }
+
+  set {
     name  = "controller.replicaCount"
     value = "1"
   }

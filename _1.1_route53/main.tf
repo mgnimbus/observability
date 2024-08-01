@@ -1,10 +1,10 @@
 resource "helm_release" "external_dns" {
   name = "external-dns"
 
-  repository = "https://kubernetes-sigs.github.io/external-dns/"
-  chart      = "external-dns"
-
-  namespace = "default"
+  repository       = "https://kubernetes-sigs.github.io/external-dns/"
+  chart            = "external-dns"
+  create_namespace = true
+  namespace        = var.namespace
 
   set {
     name  = "image.repository"

@@ -9,14 +9,14 @@ resource "helm_release" "grafana" {
   values = [
     "${file("${path.module}/manifests/grafana_helm/default.yaml")}"
   ]
-  set {
-    name  = "nginx.service.type"
-    value = "LoadBalancer"
-  }
-  set {
-    name  = "nginx.service.port"
-    value = "3000"
-  }
+  # set {
+  #   name  = "nginx.service.type"
+  #   value = "ClusterIP"
+  # }
+  # set {
+  #   name  = "nginx.service.port"
+  #   value = "3000"
+  # }
 
 }
 

@@ -4,5 +4,5 @@ region           = "us-east-1"
 environment      = "dev"
 business_divsion = "meda"
 
-namespace            = "grafana"
+namespace            = "external-dns"
 service_account_name = "external-dns"

@@ -36,17 +36,14 @@ clusterName: ${eks_cluster}
 cluster:
   dnsDomain: cluster.local
 
-ingressClass: alb
-
 ingressClassParams:
-  create: true
-  name: mu-aws-alb-ingress-class
+  create: false
 
 createIngressClassResource: true
 region: ${region}
 vpcId: ${vpc_id}
 
-defaultTargetType: instance
+defaultTargetType: ip
 
 enableShield: false
 
@@ -79,6 +76,6 @@ readinessProbe:
 hostNetwork: false
 
 ingressClassConfig:
-  default: true
+  default: false
 
 enableServiceMutatorWebhook: true
