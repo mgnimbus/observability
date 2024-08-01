@@ -7,20 +7,8 @@ resource "helm_release" "grafana" {
   create_namespace = true
 
   values = [
-    "${file("${path.module}/manifests/grafana_helm/default.yaml")}"
+    "${file("${path.module}/manifests/default.yaml")}"
   ]
-  # set {
-  #   name  = "nginx.service.type"
-  #   value = "ClusterIP"
-  # }
-  # set {
-  #   name  = "nginx.service.port"
-  #   value = "3000"
-  # }
 
 }
 
-# resource "kubectl_manifest" "grafana" {
-#   depends_on = [helm_release.grafana]
-#   yaml_body  = file("${path.module}/manifests/grafana_helm/service.yaml")
-# }
