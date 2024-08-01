@@ -8,3 +8,7 @@ data "terraform_remote_state" "eks" {
   }
 }
 
+# Datasource: EKS Cluster Auth for helm
+data "aws_eks_cluster_auth" "cluster" {
+  name = data.terraform_remote_state.eks.outputs.cluster_id
+}

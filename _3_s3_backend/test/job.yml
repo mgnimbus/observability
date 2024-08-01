@@ -16,3 +16,5 @@ spec:
           args: ["s3", "ls"]
           # args: ["ec2", "describe-instances", "--region", "${var.aws_region}"] # Should fail as we don't have access to EC2 Describe Instances for IAM Role
       restartPolicy: Never
+# kubectl get pods -n grafana
+# k logs -f irsa-sa-demo-wwfvh -n grafana
