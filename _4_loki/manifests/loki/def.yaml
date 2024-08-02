@@ -246,11 +246,9 @@ loki:
       cache_ttl: 168h
     filesystem:
       directory: /var/loki/chunks
-  # -- Uncomment to configure each storage individually
-  #   azure: {}
-  #   gcs: {}
-  #   s3: {}
-  #   boltdb: {}
+    s3:
+      bucketnames: meda-dev-mule-loki-chunks
+      region: us-east-1
 
   # -- Structured loki configuration, takes precedence over `loki.config`, `loki.schemaConfig`, `loki.storageConfig`
   structuredConfig:
@@ -314,17 +312,16 @@ runtimeConfig: {}
 
 serviceAccount:
   # -- Specifies whether a ServiceAccount should be created
-  create: true
+  create: false
   # -- The name of the ServiceAccount to use.
   # If not set and create is true, a name is generated using the fullname template
-  name: loki
+  name: s3-sa
   # -- Image pull secrets for the service account
   imagePullSecrets: []
   # -- Labels for the service account
   labels: {}
   # -- Annotations for the service account
-  annotations:
-    ks.amazonaws.com/role-arn: arn:aws:iam::058264194719:role/meda-dev-mule-s3-role-test
+  annotations: {}
   # -- Set this toggle to false to opt out of automounting API credentials for the service account
   automountServiceAccountToken: true
 
@@ -575,7 +572,7 @@ ingester:
         #   If set to "-", storageClassName: "", which disables dynamic provisioning.
         #   If empty or set to null, no storageClassName spec is
         #   set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).
-        storageClass: null
+        storageClass: obsrv-sc
       # - name: wal
       #   size: 150Gi
     # -- Enable StatefulSetAutoDeletePVC feature
@@ -1471,7 +1468,7 @@ compactor:
     grpc: ""
   persistence:
     # -- Enable creating PVCs for the compactor
-    enabled: false
+    enabled: true
     # -- Size of persistent disk
     size: 10Gi
     # -- Storage class to be used.
@@ -1492,7 +1489,7 @@ compactor:
         #   If set to "-", storageClassName: "", which disables dynamic provisioning.
         #   If empty or set to null, no storageClassName spec is
         #   set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).
-        storageClass: null
+        storageClass: obsrv-sc
       # - name: wal
       #   size: 150Gi
     # -- Enable StatefulSetAutoDeletePVC feature

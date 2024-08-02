@@ -20,6 +20,12 @@ fullnameOverride: null
 # -- Image pull secrets for Docker images
 imagePullSecrets: []
 
+# -- hostAliases to add
+hostAliases: []
+#  - ip: 1.2.3.4
+#    hostnames:
+#      - domain.tld
+
 loki:
   # -- If set, these annotations are added to all of the Kubernetes controllers
   # (Deployments, StatefulSets, etc) that this chart launches. Use this to
@@ -70,17 +76,28 @@ loki:
     allowPrivilegeEscalation: false
   # -- Specify an existing secret containing loki configuration. If non-empty, overrides `loki.config`
   existingSecretForConfig: ""
+  # -- Store the loki configuration as a secret.
+  configAsSecret: false
+  # -- Annotations for the secret with loki configuration.
+  configSecretAnnotations: {}
+  # -- Additional labels for the secret with loki configuration.
+  configSecretLabels: {}
   # -- Adds the appProtocol field to the memberlist service. This allows memberlist to work with istio protocol selection. Ex: "http" or "tcp"
   appProtocol: ""
   # -- Common annotations for all loki services
   serviceAnnotations: {}
+  # Loki server configuration
+  # Refers to https://grafana.com/docs/loki/latest/configuration/#server
+  server:
+    # -- HTTP server listen port
+    http_listen_port: 3100
   # -- Config file contents for Loki
   # @default -- See values.yaml
   config: |
-    auth_enabled: true
+    auth_enabled: false
 
     server:
-      http_listen_port: 3100
+      {{- toYaml .Values.loki.server | nindent 6 }}
 
     common:
       compactor_address: http://{{ include "loki.compactorFullname" . }}:3100
@@ -93,6 +110,10 @@ loki:
     memberlist:
       join_members:
         - {{ include "loki.fullname" . }}-memberlist
+
+    ingester_client:
+      grpc_client_config:
+        grpc_compression: gzip
 
     ingester:
       lifecycler:
@@ -113,10 +134,7 @@ loki:
       reject_old_samples: true
       reject_old_samples_max_age: 168h
       max_cache_freshness_per_query: 10m
-      max_label_names_per_series: 60
-      max_entries_limit_per_query: 500000
-      unordered_writes: true
-      split_queries_by_interval: 30m
+      split_queries_by_interval: 15m
 
     {{- if .Values.loki.schemaConfig}}
     schema_config:
@@ -169,7 +187,7 @@ loki:
         cache:
           {{- if .Values.memcachedFrontend.enabled }}
           memcached_client:
-            host: {{ include "loki.memcachedFrontendFullname" . }}
+            addresses: dnssrv+_memcached-client._tcp.{{ include "loki.memcachedFrontendFullname" . }}.{{ .Release.Namespace }}.svc.{{ .Values.global.clusterDomain }}
             consistent_hash: true
           {{- else }}
           embedded_cache:
@@ -181,7 +199,7 @@ loki:
       {{- if .Values.queryScheduler.enabled }}
       scheduler_address: {{ include "loki.querySchedulerFullname" . }}:9095
       {{- else }}
-      frontend_address: {{ include "loki.queryFrontendFullname" . }}:9095
+      frontend_address: {{ include "loki.queryFrontendFullname" . }}-headless:9095
       {{- end }}
 
     frontend:
@@ -193,11 +211,8 @@ loki:
       tail_proxy_url: http://{{ include "loki.querierFullname" . }}:3100
 
     compactor:
-      compaction_interval: 30m
-      retention_enabled: true
-      retention_delete_delay: 2h
-      retention_delete_worker_count: 150      
-      shared_store: aws 
+      shared_store: filesystem
+      working_directory: /var/loki/compactor
 
     ruler:
       storage:
@@ -214,7 +229,7 @@ loki:
   # -- Check https://grafana.com/docs/loki/latest/configuration/#schema_config for more info on how to configure schemas
   schemaConfig:
     configs:
-      - from: 2022-11-01
+      - from: "2022-11-01"
         store: boltdb-shipper
         object_store: aws
         schema: v11
@@ -231,7 +246,7 @@ loki:
       cache_ttl: 168h
     filesystem:
       directory: /var/loki/chunks
-    aws:
+    s3:
       bucketnames: meda-dev-mule-loki-chunks
       region: us-east-1
 
@@ -293,40 +308,7 @@ loki:
       split_queries_by_interval: 30m
 
 # -- Provides a reloadable runtime configuration file for some specific configuration
-runtimeConfig:
-  overrides:
-    dev-env:
-      ingestion_burst_size_mb: 1024
-      ingestion_rate_mb: 300
-      retention_period: 60d
-      max_label_names_per_series: 40
-      max_query_series: 100000
-      max_entries_limit_per_query: 100000
-      unordered_writes: true
-    prod-env:
-      ingestion_burst_size_mb: 1024
-      max_entries_limit_per_query: 100000
-      ingestion_rate_mb: 300
-      max_label_names_per_series: 40
-      max_query_series: 100000
-      retention_period: 90d
-      unordered_writes: true
-    ec2-dev-env:
-      ingestion_burst_size_mb: 1024
-      ingestion_rate_mb: 300
-      max_entries_limit_per_query: 100000
-      max_query_series: 100000
-      retention_period: 60d
-      unordered_writes: true
-      max_label_names_per_series: 40
-    ec2-prod-env:
-      ingestion_burst_size_mb: 1024
-      max_label_names_per_series: 40
-      max_entries_limit_per_query: 100000
-      ingestion_rate_mb: 300
-      max_query_series: 100000
-      retention_period: 90d
-      unordered_writes: true
+runtimeConfig: {}
 
 serviceAccount:
   # -- Specifies whether a ServiceAccount should be created
@@ -336,6 +318,8 @@ serviceAccount:
   name: loki
   # -- Image pull secrets for the service account
   imagePullSecrets: []
+  # -- Labels for the service account
+  labels: {}
   # -- Annotations for the service account
   annotations: {}
   # -- Set this toggle to false to opt out of automounting API credentials for the service account
@@ -356,12 +340,19 @@ serviceMonitor:
   namespace: null
   # -- Namespace selector for ServiceMonitor resources
   namespaceSelector: {}
+  # -- Optional expressions to match on
+  matchExpressions:
+    []
+    # - key: prometheus.io/service-monitor
+    #   operator: NotIn
+    #   values:
+    #     - "false"
   # -- ServiceMonitor annotations
   annotations: {}
   # -- Additional ServiceMonitor labels
   labels: {}
   # -- ServiceMonitor scrape interval
-  interval: 30s
+  interval: null
   # -- ServiceMonitor scrape timeout in Go duration format (e.g. 15s)
   scrapeTimeout: null
   # -- ServiceMonitor relabel configs to apply to samples before scraping
@@ -388,7 +379,6 @@ prometheusRule:
   annotations: {}
   # -- Additional PrometheusRule labels
   labels: {}
-  # -- Contents of Prometheus rules file
   groups:
     - name: loki_rules
       rules:
@@ -461,18 +451,30 @@ ingester:
   # -- Kind of deployment [StatefulSet/Deployment]
   kind: StatefulSet
   # -- Number of replicas for the ingester
-  replicas: 3
+  replicas: 1
+  hostAliases: []
   autoscaling:
-    # -- Enable autoscaling for the ingester
     enabled: false
-    # -- Minimum autoscaling replicas for the ingester
-    minReplicas: 3
-    # -- Maximum autoscaling replicas for the ingester
+    minReplicas: 1
     maxReplicas: 3
-    # -- Target CPU utilisation percentage for the ingester
-    targetCPUUtilizationPercentage: 80
-    # -- Target memory utilisation percentage for the ingester
+    targetCPUUtilizationPercentage: 60
     targetMemoryUtilizationPercentage: 80
+    # -- Allows one to define custom metrics using the HPA/v2 schema (for example, Pods, Object or External metrics)
+    customMetrics: []
+    # - type: Pods
+    #   pods:
+    #     metric:
+    #       name: loki_lines_total
+    #     target:
+    #       type: AverageValue
+    #       averageValue: 10k
+    behavior:
+      # -- Enable autoscaling behaviours
+      enabled: false
+      # -- define scale down policies, must conform to HPAScalingRules
+      scaleDown: {}
+      # -- define scale up policies, must conform to HPAScalingRules
+      scaleUp: {}
   image:
     # -- The Docker registry for the ingester image. Overrides `loki.image.registry`
     registry: null
@@ -502,12 +504,12 @@ ingester:
   extraVolumes: []
   # -- Resource requests and limits for the ingester
   resources:
-    limits:
-      memory: 3Gi
-      cpu: 1
-    requests:
-      memory: 2Gi
-      cpu: 500m
+    # limits:
+    #   memory: 3Gi
+    #   cpu: 1
+    # requests:
+    #   memory: 2Gi
+    #   cpu: 500m
   # -- Containers to add to the ingester pods
   extraContainers: []
   # -- Init containers to add to the ingester pods
@@ -516,11 +518,13 @@ ingester:
   # this must be increased. It must be long enough so ingesters can be gracefully shutdown flushing/transferring
   # all data and to successfully leave the member ring on shutdown.
   terminationGracePeriodSeconds: 300
+  # -- Lifecycle for the ingester container
+  lifecycle: {}
   # -- topologySpread for ingester pods. Passed through `tpl` and, thus, to be configured as string
   # @default -- Defaults to allow skew no more then 1 node per AZ
   topologySpreadConstraints: |
     - maxSkew: 1
-      topologyKey: topology.kubernetes.io/zone
+      topologyKey: kubernetes.io/zone
       whenUnsatisfiable: ScheduleAnyway
       labelSelector:
         matchLabels:
@@ -541,30 +545,14 @@ ingester:
               matchLabels:
                 {{- include "loki.ingesterSelectorLabels" . | nindent 12 }}
             topologyKey: failure-domain.beta.kubernetes.io/zone
-    nodeAffinity:
-      requiredDuringSchedulingIgnoredDuringExecution:
-        nodeSelectorTerms:
-        - matchExpressions:
-          - key: Obs-NG
-            operator: In
-            values:
-            - observability-stateful-ng
-          - key: topology.kubernetes.io/zone
-            operator: In
-            values:
-            - us-west-2a
-            - us-west-2b
-            - us-west-2c
   # -- Pod Disruption Budget maxUnavailable
-  maxUnavailable: 1
+  maxUnavailable: null
+  # -- Max Surge for ingester pods
+  maxSurge: 0
   # -- Node selector for ingester pods
   nodeSelector: {}
   # -- Tolerations for ingester pods
-  tolerations:
-    - key: "dedicated"
-      operator: "Equal"
-      value: "monitoring"
-      effect: "NoSchedule"
+  tolerations: []
   # -- readiness probe settings for ingester pods. If empty, use `loki.readinessProbe`
   readinessProbe: {}
   # -- liveness probe settings for ingester pods. If empty use `loki.livenessProbe`
@@ -574,16 +562,23 @@ ingester:
     enabled: true
     # -- Use emptyDir with ramdisk for storage. **Please note that all data in ingester will be lost on pod restart**
     inMemory: false
-    # -- Size of persistent or memory disk
-    size: 50Gi
-    # -- Storage class to be used.
-    # If defined, storageClassName: <storageClass>.
-    # If set to "-", storageClassName: "", which disables dynamic provisioning.
-    # If empty or set to null, no storageClassName spec is
-    # set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).
-    storageClass: null
-    # -- Annotations for ingester PVCs
-    annotations: {}
+    # -- List of the ingester PVCs
+    # @notationType -- list
+    claims:
+      - name: data
+        size: 10Gi
+        #   -- Storage class to be used.
+        #   If defined, storageClassName: <storageClass>.
+        #   If set to "-", storageClassName: "", which disables dynamic provisioning.
+        #   If empty or set to null, no storageClassName spec is
+        #   set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).
+        storageClass: obsrv-sc
+      # - name: wal
+      #   size: 150Gi
+    # -- Enable StatefulSetAutoDeletePVC feature
+    enableStatefulSetAutoDeletePVC: false
+    whenDeleted: Retain
+    whenScaled: Retain
   # -- Adds the appProtocol field to the ingester service. This allows ingester to work with istio protocol selection.
   appProtocol:
     # -- Set the optional grpc service protocol. Ex: "grpc", "http2" or "https"
@@ -592,18 +587,39 @@ ingester:
 # Configuration for the distributor
 distributor:
   # -- Number of replicas for the distributor
-  replicas: 3
+  replicas: 1
+  # -- hostAliases to add
+  hostAliases: []
+  #  - ip: 1.2.3.4
+  #    hostnames:
+  #      - domain.tld
   autoscaling:
     # -- Enable autoscaling for the distributor
-    enabled: true
+    enabled: false
     # -- Minimum autoscaling replicas for the distributor
-    minReplicas: 3
+    minReplicas: 1
     # -- Maximum autoscaling replicas for the distributor
-    maxReplicas: 15
+    maxReplicas: 3
     # -- Target CPU utilisation percentage for the distributor
-    targetCPUUtilizationPercentage: 90
+    targetCPUUtilizationPercentage: 60
     # -- Target memory utilisation percentage for the distributor
-    targetMemoryUtilizationPercentage: 90
+    targetMemoryUtilizationPercentage: null
+    # -- Allows one to define custom metrics using the HPA/v2 schema (for example, Pods, Object or External metrics)
+    customMetrics: []
+    # - type: Pods
+    #   pods:
+    #     metric:
+    #       name: loki_lines_total
+    #     target:
+    #       type: AverageValue
+    #       averageValue: 10k
+    behavior:
+      # -- Enable autoscaling behaviours
+      enabled: false
+      # -- define scale down policies, must conform to HPAScalingRules
+      scaleDown: {}
+      # -- define scale up policies, must conform to HPAScalingRules
+      scaleUp: {}
   image:
     # -- The Docker registry for the distributor image. Overrides `loki.image.registry`
     registry: null
@@ -632,14 +648,7 @@ distributor:
   # -- Volumes to add to the distributor pods
   extraVolumes: []
   # -- Resource requests and limits for the distributor
-  resources:
-    limits:
-      cpu: 1
-      memory: 1Gi
-    requests:
-      cpu: 700m
-      memory: 500Mi
-
+  resources: {}
   # -- Containers to add to the distributor pods
   extraContainers: []
   # -- Grace period to allow the distributor to shutdown before it is killed
@@ -648,6 +657,11 @@ distributor:
   # @default -- Hard node and soft zone anti-affinity
   affinity: |
     podAntiAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        - labelSelector:
+            matchLabels:
+              {{- include "loki.distributorSelectorLabels" . | nindent 10 }}
+          topologyKey: kubernetes.io/hostname
       preferredDuringSchedulingIgnoredDuringExecution:
         - weight: 100
           podAffinityTerm:
@@ -655,23 +669,10 @@ distributor:
               matchLabels:
                 {{- include "loki.distributorSelectorLabels" . | nindent 12 }}
             topologyKey: failure-domain.beta.kubernetes.io/zone
-    nodeAffinity:
-      requiredDuringSchedulingIgnoredDuringExecution:
-        nodeSelectorTerms:
-        - matchExpressions:
-          - key: loki
-            operator: In
-            values:
-            - allowed
-          - key: topology.kubernetes.io/zone
-            operator: In
-            values:
-            - us-west-2a
-            - us-west-2b
-            - us-west-2c
-
   # -- Pod Disruption Budget maxUnavailable
-  maxUnavailable: 1
+  maxUnavailable: null
+  # -- Max Surge for distributor pods
+  maxSurge: 0
   # -- Node selector for distributor pods
   nodeSelector: {}
   # -- Tolerations for distributor pods
@@ -685,18 +686,39 @@ distributor:
 # Configuration for the querier
 querier:
   # -- Number of replicas for the querier
-  replicas: 3
+  replicas: 1
+  # -- hostAliases to add
+  hostAliases: []
+  #  - ip: 1.2.3.4
+  #    hostnames:
+  #      - domain.tld
   autoscaling:
     # -- Enable autoscaling for the querier, this is only used if `indexGateway.enabled: true`
-    enabled: true
+    enabled: false
     # -- Minimum autoscaling replicas for the querier
-    minReplicas: 3
+    minReplicas: 1
     # -- Maximum autoscaling replicas for the querier
-    maxReplicas: 50
+    maxReplicas: 3
     # -- Target CPU utilisation percentage for the querier
-    targetCPUUtilizationPercentage: 90
+    targetCPUUtilizationPercentage: 60
     # -- Target memory utilisation percentage for the querier
-    targetMemoryUtilizationPercentage: 90
+    targetMemoryUtilizationPercentage: null
+    # -- Allows one to define custom metrics using the HPA/v2 schema (for example, Pods, Object or External metrics)
+    customMetrics: []
+    # - type: External
+    #   external:
+    #     metric:
+    #       name: loki_inflight_queries
+    #     target:
+    #       type: AverageValue
+    #       averageValue: 12
+    behavior:
+      # -- Enable autoscaling behaviours
+      enabled: false
+      # -- define scale down policies, must conform to HPAScalingRules
+      scaleDown: {}
+      # -- define scale up policies, must conform to HPAScalingRules
+      scaleUp: {}
   image:
     # -- The Docker registry for the querier image. Overrides `loki.image.registry`
     registry: null
@@ -725,13 +747,7 @@ querier:
   # -- Volumes to add to the querier pods
   extraVolumes: []
   # -- Resource requests and limits for the querier
-  resources:
-    limits:
-      cpu: 1
-      memory: 1Gi
-    requests:
-      cpu: 750m
-      memory: 750Mi
+  resources: {}
   # -- Containers to add to the querier pods
   extraContainers: []
   # -- Init containers to add to the querier pods
@@ -742,7 +758,7 @@ querier:
   # @default -- Defaults to allow skew no more then 1 node per AZ
   topologySpreadConstraints: |
     - maxSkew: 1
-      topologyKey: topology.kubernetes.io/zone
+      topologyKey: kubernetes.io/hostname
       whenUnsatisfiable: ScheduleAnyway
       labelSelector:
         matchLabels:
@@ -750,24 +766,23 @@ querier:
   # -- Affinity for querier pods. Passed through `tpl` and, thus, to be configured as string
   # @default -- Hard node and soft zone anti-affinity
   affinity: |
-
-    nodeAffinity:
+    podAntiAffinity:
       requiredDuringSchedulingIgnoredDuringExecution:
-        nodeSelectorTerms:
-          - matchExpressions:
-              - key: loki
-                operator: In
-                values:
-                  - allowed
-              - key: topology.kubernetes.io/zone
-                operator: In
-                values:
-                  - us-west-2a
-                  - us-west-2b
-                  - us-west-2c
-
+        - labelSelector:
+            matchLabels:
+              {{- include "loki.querierSelectorLabels" . | nindent 10 }}
+          topologyKey: kubernetes.io/hostname
+      preferredDuringSchedulingIgnoredDuringExecution:
+        - weight: 100
+          podAffinityTerm:
+            labelSelector:
+              matchLabels:
+                {{- include "loki.querierSelectorLabels" . | nindent 12 }}
+            topologyKey: failure-domain.beta.kubernetes.io/zone
   # -- Pod Disruption Budget maxUnavailable
-  maxUnavailable: 1
+  maxUnavailable: null
+  # -- Max Surge for querier pods
+  maxSurge: 0
   # -- Node selector for querier pods
   nodeSelector: {}
   # -- Tolerations for querier pods
@@ -795,18 +810,39 @@ querier:
 # Configuration for the query-frontend
 queryFrontend:
   # -- Number of replicas for the query-frontend
-  replicas: 3
+  replicas: 1
+  # -- hostAliases to add
+  hostAliases: []
+  #  - ip: 1.2.3.4
+  #    hostnames:
+  #      - domain.tld
   autoscaling:
     # -- Enable autoscaling for the query-frontend
-    enabled: true
+    enabled: false
     # -- Minimum autoscaling replicas for the query-frontend
-    minReplicas: 3
+    minReplicas: 1
     # -- Maximum autoscaling replicas for the query-frontend
-    maxReplicas: 15
+    maxReplicas: 3
     # -- Target CPU utilisation percentage for the query-frontend
-    targetCPUUtilizationPercentage: 90
+    targetCPUUtilizationPercentage: 60
     # -- Target memory utilisation percentage for the query-frontend
-    targetMemoryUtilizationPercentage: 90
+    targetMemoryUtilizationPercentage: null
+    # -- Allows one to define custom metrics using the HPA/v2 schema (for example, Pods, Object or External metrics)
+    customMetrics: []
+    # - type: Pods
+    #   pods:
+    #     metric:
+    #       name: loki_query_rate
+    #     target:
+    #       type: AverageValue
+    #       averageValue: 100
+    behavior:
+      # -- Enable autoscaling behaviours
+      enabled: false
+      # -- define scale down policies, must conform to HPAScalingRules
+      scaleDown: {}
+      # -- define scale up policies, must conform to HPAScalingRules
+      scaleUp: {}
   image:
     # -- The Docker registry for the query-frontend image. Overrides `loki.image.registry`
     registry: null
@@ -835,13 +871,7 @@ queryFrontend:
   # -- Volumes to add to the query-frontend pods
   extraVolumes: []
   # -- Resource requests and limits for the query-frontend
-  resources:
-    limits:
-      cpu: 1
-      memory: 1Gi
-    requests:
-      cpu: 500m
-      memory: 500Mi
+  resources: {}
   # -- Containers to add to the query-frontend pods
   extraContainers: []
   # -- Grace period to allow the query-frontend to shutdown before it is killed
@@ -850,6 +880,11 @@ queryFrontend:
   # @default -- Hard node and soft zone anti-affinity
   affinity: |
     podAntiAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        - labelSelector:
+            matchLabels:
+              {{- include "loki.queryFrontendSelectorLabels" . | nindent 10 }}
+          topologyKey: kubernetes.io/hostname
       preferredDuringSchedulingIgnoredDuringExecution:
         - weight: 100
           podAffinityTerm:
@@ -857,22 +892,8 @@ queryFrontend:
               matchLabels:
                 {{- include "loki.queryFrontendSelectorLabels" . | nindent 12 }}
             topologyKey: failure-domain.beta.kubernetes.io/zone
-    nodeAffinity:
-      requiredDuringSchedulingIgnoredDuringExecution:
-        nodeSelectorTerms:
-        - matchExpressions:
-          - key: loki
-            operator: In
-            values:
-            - allowed
-          - key: topology.kubernetes.io/zone
-            operator: In
-            values:
-            - us-west-2a
-            - us-west-2b
-            - us-west-2c
   # -- Pod Disruption Budget maxUnavailable
-  maxUnavailable: 1
+  maxUnavailable: null
   # -- Node selector for query-frontend pods
   nodeSelector: {}
   # -- Tolerations for query-frontend pods
@@ -885,11 +906,16 @@ queryFrontend:
 # Configuration for the query-scheduler
 queryScheduler:
   # -- Specifies whether the query-scheduler should be decoupled from the query-frontend
-  enabled: true
+  enabled: false
   # -- Number of replicas for the query-scheduler.
   # It should be lower than `-querier.max-concurrent` to avoid generating back-pressure in queriers;
   # it's also recommended that this value evenly divides the latter
-  replicas: 3
+  replicas: 2
+  # -- hostAliases to add
+  hostAliases: []
+  #  - ip: 1.2.3.4
+  #    hostnames:
+  #      - domain.tld
   image:
     # -- The Docker registry for the query-scheduler image. Overrides `loki.image.registry`
     registry: null
@@ -916,13 +942,7 @@ queryScheduler:
   # -- Volumes to add to the query-scheduler pods
   extraVolumes: []
   # -- Resource requests and limits for the query-scheduler
-  resources:
-    limits:
-      cpu: 1
-      memory: 200Mi
-    requests:
-      cpu: 500m
-      memory: 100Mi
+  resources: {}
   # -- Containers to add to the query-scheduler pods
   extraContainers: []
   # -- Grace period to allow the query-scheduler to shutdown before it is killed
@@ -931,6 +951,11 @@ queryScheduler:
   # @default -- Hard node and soft zone anti-affinity
   affinity: |
     podAntiAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        - labelSelector:
+            matchLabels:
+              {{- include "loki.querySchedulerSelectorLabels" . | nindent 10 }}
+          topologyKey: kubernetes.io/hostname
       preferredDuringSchedulingIgnoredDuringExecution:
         - weight: 100
           podAffinityTerm:
@@ -938,31 +963,25 @@ queryScheduler:
               matchLabels:
                 {{- include "loki.querySchedulerSelectorLabels" . | nindent 12 }}
             topologyKey: failure-domain.beta.kubernetes.io/zone
-    nodeAffinity:
-      requiredDuringSchedulingIgnoredDuringExecution:
-        nodeSelectorTerms:
-        - matchExpressions:
-          - key: loki
-            operator: In
-            values:
-            - allowed
-          - key: topology.kubernetes.io/zone
-            operator: In
-            values:
-            - us-west-2a
-            - us-west-2b
-            - us-west-2c
   # -- Pod Disruption Budget maxUnavailable
   maxUnavailable: 1
   # -- Node selector for query-scheduler pods
   nodeSelector: {}
   # -- Tolerations for query-scheduler pods
   tolerations: []
+  # -- Set the optional grpc service protocol. Ex: "grpc", "http2" or "https"
+  appProtocol:
+    grpc: ""
 
 # Configuration for the table-manager
 tableManager:
   # -- Specifies whether the table-manager should be enabled
   enabled: false
+  # -- hostAliases to add
+  hostAliases: []
+  #  - ip: 1.2.3.4
+  #    hostnames:
+  #      - domain.tld
   image:
     # -- The Docker registry for the table-manager image. Overrides `loki.image.registry`
     registry: null
@@ -1054,21 +1073,46 @@ ingress:
 gateway:
   # -- Specifies whether the gateway should be enabled
   enabled: true
+  # -- hostAliases to add
+  hostAliases: []
+  #  - ip: 1.2.3.4
+  #    hostnames:
+  #      - domain.tld
   # -- Number of replicas for the gateway
-  replicas: 3
+  replicas: 1
   # -- Enable logging of 2xx and 3xx HTTP requests
   verboseLogging: true
   autoscaling:
     # -- Enable autoscaling for the gateway
-    enabled: true
+    enabled: false
     # -- Minimum autoscaling replicas for the gateway
-    minReplicas: 3
+    minReplicas: 1
     # -- Maximum autoscaling replicas for the gateway
-    maxReplicas: 30
+    maxReplicas: 3
     # -- Target CPU utilisation percentage for the gateway
-    targetCPUUtilizationPercentage: 90
+    targetCPUUtilizationPercentage: 60
     # -- Target memory utilisation percentage for the gateway
-    targetMemoryUtilizationPercentage: 90
+    targetMemoryUtilizationPercentage: null
+    # -- Allows one to define custom metrics using the HPA/v2 schema (for example, Resource, Object or External metrics)
+    customMetrics: []
+    # - type: Object
+    #   object:
+    #     metric:
+    #       name: requests-per-second
+    #     describedObject:
+    #       apiVersion: networking.k8s.io/v1
+    #       kind: Ingress
+    #       name: main-route
+    #     target:
+    #       type: Values
+    #       averageValue: 10k
+    behavior:
+      # -- Enable autoscaling behaviours
+      enabled: false
+      # -- define scale down policies, must conform to HPAScalingRules
+      scaleDown: {}
+      # -- define scale up policies, must conform to HPAScalingRules
+      scaleUp: {}
   # -- See `kubectl explain deployment.spec.strategy` for more,
   # ref: https://kubernetes.io/docs/concepts/workloads/controllers/deployment/#strategy
   deploymentStrategy:
@@ -1112,13 +1156,7 @@ gateway:
         - ALL
     allowPrivilegeEscalation: false
   # -- Resource requests and limits for the gateway
-  resources:
-    limits:
-      cpu: 1
-      memory: 500Mi
-    requests:
-      cpu: 750m
-      memory: 300Mi
+  resources: {}
   # -- Containers to add to the gateway pods
   extraContainers: []
   # -- Grace period to allow the gateway to shutdown before it is killed
@@ -1127,6 +1165,11 @@ gateway:
   # @default -- Hard node and soft zone anti-affinity
   affinity: |
     podAntiAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        - labelSelector:
+            matchLabels:
+              {{- include "loki.gatewaySelectorLabels" . | nindent 10 }}
+          topologyKey: kubernetes.io/hostname
       preferredDuringSchedulingIgnoredDuringExecution:
         - weight: 100
           podAffinityTerm:
@@ -1134,23 +1177,8 @@ gateway:
               matchLabels:
                 {{- include "loki.gatewaySelectorLabels" . | nindent 12 }}
             topologyKey: failure-domain.beta.kubernetes.io/zone
-    nodeAffinity:
-      requiredDuringSchedulingIgnoredDuringExecution:
-        nodeSelectorTerms:
-        - matchExpressions:
-          - key: loki
-            operator: In
-            values:
-            - allowed
-          - key: topology.kubernetes.io/zone
-            operator: In
-            values:
-            - us-west-2a
-            - us-west-2b
-            - us-west-2c
-
   # -- Pod Disruption Budget maxUnavailable
-  maxUnavailable: 1
+  maxUnavailable: null
   # -- Node selector for gateway pods
   nodeSelector: {}
   # -- Tolerations for gateway pods
@@ -1204,11 +1232,11 @@ gateway:
   # Basic auth configuration
   basicAuth:
     # -- Enables basic authentication for the gateway
-    enabled: true
+    enabled: false
     # -- The basic auth username for the gateway
-    username: <CHANGE_ME>
+    username: null
     # -- The basic auth password for the gateway
-    password: <CHANGE_ME>
+    password: null
     # -- Uses the specified username and password to compute a htpasswd using Sprig's `htpasswd` function.
     # The value is templated using `tpl`. Override this to use a custom htpasswd, e.g. in case the default causes
     # high CPU load.
@@ -1365,8 +1393,17 @@ gateway:
 
 # Configuration for the compactor
 compactor:
+  # -- Kind of deployment [StatefulSet/Deployment]
+  kind: StatefulSet
+  # -- Number of replicas for the compactor
+  replicas: 1
   # -- Specifies whether compactor should be enabled
-  enabled: true
+  enabled: false
+  # -- hostAliases to add
+  hostAliases: []
+  #  - ip: 1.2.3.4
+  #    hostnames:
+  #      - domain.tld
   image:
     # -- The Docker registry for the compactor image. Overrides `loki.image.registry`
     registry: null
@@ -1382,20 +1419,22 @@ compactor:
   podLabels: {}
   # -- Annotations for compactor pods
   podAnnotations: {}
-  # -- Specify the compactor affinity
-  affinity:
-    nodeAffinity:
+  # -- Affinity for compactor pods. Passed through `tpl` and, thus, to be configured as string
+  # @default -- Hard node and soft zone anti-affinity
+  affinity: |
+    podAntiAffinity:
       requiredDuringSchedulingIgnoredDuringExecution:
-        nodeSelectorTerms:
-          - matchExpressions:
-              - key: Obs-NG
-                operator: In
-                values:
-                  - observability-stateful-ng
-              - key: topology.kubernetes.io/zone
-                operator: In
-                values:
-                  - us-west-2b
+        - labelSelector:
+            matchLabels:
+              {{- include "loki.compactorSelectorLabels" . | nindent 10 }}
+          topologyKey: kubernetes.io/hostname
+      preferredDuringSchedulingIgnoredDuringExecution:
+        - weight: 100
+          podAffinityTerm:
+            labelSelector:
+              matchLabels:
+                {{- include "loki.compactorSelectorLabels" . | nindent 12 }}
+            topologyKey: failure-domain.beta.kubernetes.io/zone
   # -- Labels for compactor service
   serviceLabels: {}
   # -- Additional CLI args for the compactor
@@ -1408,14 +1447,12 @@ compactor:
   extraVolumeMounts: []
   # -- Volumes to add to the compactor pods
   extraVolumes: []
+  # -- readiness probe settings for ingester pods. If empty, use `loki.readinessProbe`
+  readinessProbe: {}
+  # -- liveness probe settings for ingester pods. If empty use `loki.livenessProbe`
+  livenessProbe: {}
   # -- Resource requests and limits for the compactor
-  resources:
-    limits:
-      cpu: 1
-      memory: 4Gi
-    requests:
-      cpu: 500m
-      memory: 500Mi
+  resources: {}
   # -- Containers to add to the compactor pods
   extraContainers: []
   # -- Init containers to add to the compactor pods
@@ -1425,11 +1462,10 @@ compactor:
   # -- Node selector for compactor pods
   nodeSelector: {}
   # -- Tolerations for compactor pods
-  tolerations:
-    - key: "dedicated"
-      operator: "Equal"
-      value: "monitoring"
-      effect: "NoSchedule"
+  tolerations: []
+  # -- Set the optional grpc service protocol. Ex: "grpc", "http2" or "https"
+  appProtocol:
+    grpc: ""
   persistence:
     # -- Enable creating PVCs for the compactor
     enabled: true
@@ -1443,6 +1479,24 @@ compactor:
     storageClass: null
     # -- Annotations for compactor PVCs
     annotations: {}
+    # -- List of the compactor PVCs
+    # @notationType -- list
+    claims:
+      - name: data
+        size: 10Gi
+        #   -- Storage class to be used.
+        #   If defined, storageClassName: <storageClass>.
+        #   If set to "-", storageClassName: "", which disables dynamic provisioning.
+        #   If empty or set to null, no storageClassName spec is
+        #   set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).
+        storageClass: obsrv-sc
+      # - name: wal
+      #   size: 150Gi
+    # -- Enable StatefulSetAutoDeletePVC feature
+    enableStatefulSetAutoDeletePVC: false
+    whenDeleted: Retain
+    whenScaled: Retain
+
   serviceAccount:
     create: false
     # -- The name of the ServiceAccount to use for the compactor.
@@ -1464,6 +1518,11 @@ ruler:
   kind: Deployment
   # -- Number of replicas for the ruler
   replicas: 1
+  # -- hostAliases to add
+  hostAliases: []
+  #  - ip: 1.2.3.4
+  #    hostnames:
+  #      - domain.tld
   image:
     # -- The Docker registry for the ruler image. Overrides `loki.image.registry`
     registry: null
@@ -1492,13 +1551,7 @@ ruler:
   # -- Volumes to add to the ruler pods
   extraVolumes: []
   # -- Resource requests and limits for the ruler
-  resources:
-    limits:
-      cpu: 500m
-      memory: 500Mi
-    requests:
-      cpu: 200m
-      memory: 200Mi
+  resources: {}
   # -- Containers to add to the ruler pods
   extraContainers: []
   # -- Init containers to add to the ruler pods
@@ -1509,6 +1562,11 @@ ruler:
   # @default -- Hard node and soft zone anti-affinity
   affinity: |
     podAntiAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        - labelSelector:
+            matchLabels:
+              {{- include "loki.rulerSelectorLabels" . | nindent 10 }}
+          topologyKey: kubernetes.io/hostname
       preferredDuringSchedulingIgnoredDuringExecution:
         - weight: 100
           podAffinityTerm:
@@ -1516,23 +1574,8 @@ ruler:
               matchLabels:
                 {{- include "loki.rulerSelectorLabels" . | nindent 12 }}
             topologyKey: failure-domain.beta.kubernetes.io/zone
-    nodeAffinity:
-      requiredDuringSchedulingIgnoredDuringExecution:
-        nodeSelectorTerms:
-        - matchExpressions:
-          - key: loki
-            operator: In
-            values:
-            - allowed
-          - key: topology.kubernetes.io/zone
-            operator: In
-            values:
-            - us-west-2a
-            - us-west-2b
-            - us-west-2c
-
   # -- Pod Disruption Budget maxUnavailable
-  maxUnavailable: 1
+  maxUnavailable: null
   # -- Node selector for ruler pods
   nodeSelector: {}
   # -- Tolerations for ruler pods
@@ -1552,6 +1595,9 @@ ruler:
     storageClass: null
     # -- Annotations for ruler PVCs
     annotations: {}
+  # -- Set the optional grpc service protocol. Ex: "grpc", "http2" or "https"
+  appProtocol:
+    grpc: ""
   # -- Directories containing rules files
   directories:
     {}
@@ -1623,9 +1669,16 @@ ruler:
 # Configuration for the index-gateway
 indexGateway:
   # -- Specifies whether the index-gateway should be enabled
-  enabled: true
+  enabled: false
   # -- Number of replicas for the index-gateway
-  replicas: 3
+  replicas: 1
+  # -- Whether the index gateway should join the memberlist hashring
+  joinMemberlist: true
+  # -- hostAliases to add
+  hostAliases: []
+  #  - ip: 1.2.3.4
+  #    hostnames:
+  #      - domain.tld
   image:
     # -- The Docker registry for the index-gateway image. Overrides `loki.image.registry`
     registry: null
@@ -1652,13 +1705,7 @@ indexGateway:
   # -- Volumes to add to the index-gateway pods
   extraVolumes: []
   # -- Resource requests and limits for the index-gateway
-  resources:
-    limits:
-      cpu: 2
-      memory: 2Gi
-    requests:
-      cpu: 500m
-      memory: 500Mi
+  resources: {}
   # -- Containers to add to the index-gateway pods
   extraContainers: []
   # -- Init containers to add to the index-gateway pods
@@ -1673,7 +1720,7 @@ indexGateway:
         - labelSelector:
             matchLabels:
               {{- include "loki.indexGatewaySelectorLabels" . | nindent 10 }}
-          topologyKey: topology.kubernetes.io/zone
+          topologyKey: kubernetes.io/hostname
       preferredDuringSchedulingIgnoredDuringExecution:
         - weight: 100
           podAffinityTerm:
@@ -1681,37 +1728,19 @@ indexGateway:
               matchLabels:
                 {{- include "loki.indexGatewaySelectorLabels" . | nindent 12 }}
             topologyKey: failure-domain.beta.kubernetes.io/zone
-    nodeAffinity:
-      requiredDuringSchedulingIgnoredDuringExecution:
-        nodeSelectorTerms:
-        - matchExpressions:
-          - key: Obs-NG
-            operator: In
-            values:
-            - observability-stateful-ng
-          - key: topology.kubernetes.io/zone
-            operator: In
-            values:
-            - us-west-2a
-            - us-west-2b
-            - us-west-2c
   # -- Pod Disruption Budget maxUnavailable
-  maxUnavailable: 1
+  maxUnavailable: null
   # -- Node selector for index-gateway pods
   nodeSelector: {}
   # -- Tolerations for index-gateway pods
-  tolerations:
-    - key: "dedicated"
-      operator: "Equal"
-      value: "monitoring"
-      effect: "NoSchedule"
+  tolerations: []
   persistence:
     # -- Enable creating PVCs which is required when using boltdb-shipper
-    enabled: true
+    enabled: false
     # -- Use emptyDir with ramdisk for storage. **Please note that all data in indexGateway will be lost on pod restart**
     inMemory: false
     # -- Size of persistent or memory disk
-    size: 15Gi
+    size: 10Gi
     # -- Storage class to be used.
     # If defined, storageClassName: <storageClass>.
     # If set to "-", storageClassName: "", which disables dynamic provisioning.
@@ -1720,6 +1749,13 @@ indexGateway:
     storageClass: null
     # -- Annotations for index gateway PVCs
     annotations: {}
+    # -- Enable StatefulSetAutoDeletePVC feature
+    enableStatefulSetAutoDeletePVC: false
+    whenDeleted: Retain
+    whenScaled: Retain
+  # -- Set the optional grpc service protocol. Ex: "grpc", "http2" or "https"
+  appProtocol:
+    grpc: ""
 
 memcached:
   readinessProbe:
@@ -1737,7 +1773,7 @@ memcached:
     # -- Memcached Docker image repository
     repository: memcached
     # -- Memcached Docker image tag
-    tag: 1.6.17-alpine
+    tag: 1.6.21-alpine
     # -- Memcached Docker image pull policy
     pullPolicy: IfNotPresent
   # -- Labels for memcached pods
@@ -1762,26 +1798,20 @@ memcached:
 
 memcachedExporter:
   # -- Specifies whether the Memcached Exporter should be enabled
-  enabled: true
+  enabled: false
   image:
     # -- The Docker registry for the Memcached Exporter
     registry: docker.io
     # -- Memcached Exporter Docker image repository
     repository: prom/memcached-exporter
     # -- Memcached Exporter Docker image tag
-    tag: v0.6.0
+    tag: v0.13.0
     # -- Memcached Exporter Docker image pull policy
     pullPolicy: IfNotPresent
   # -- Labels for memcached-exporter pods
   podLabels: {}
   # -- Memcached Exporter resource requests and limits
-  resources:
-    limits:
-      cpu: 500m
-      memory: 500Mi
-    requests:
-      cpu: 200m
-      memory: 200Mi
+  resources: {}
   # -- The SecurityContext for memcachedExporter containers
   containerSecurityContext:
     readOnlyRootFilesystem: true
@@ -1792,9 +1822,14 @@ memcachedExporter:
 
 memcachedChunks:
   # -- Specifies whether the Memcached chunks cache should be enabled
-  enabled: true
+  enabled: false
+  # -- hostAliases to add
+  hostAliases: []
+  #  - ip: 1.2.3.4
+  #    hostnames:
+  #      - domain.tld
   # -- Number of replicas for memcached-chunks
-  replicas: 3
+  replicas: 1
   # -- The name of the PriorityClass for memcached-chunks pods
   priorityClassName: null
   # -- Labels for memcached-chunks pods
@@ -1805,21 +1840,13 @@ memcachedChunks:
   serviceLabels: {}
   # -- Additional CLI args for memcached-chunks
   extraArgs:
-    - -m 2048
     - -I 32m
-    - -vv
   # -- Environment variables to add to memcached-chunks pods
   extraEnv: []
   # -- Environment variables from secrets or configmaps to add to memcached-chunks pods
   extraEnvFrom: []
   # -- Resource requests and limits for memcached-chunks
-  resources:
-    limits:
-      cpu: 1
-      memory: 2Gi
-    requests:
-      cpu: 500m
-      memory: 500Mi
+  resources: {}
   # -- Containers to add to the memcached-chunks pods
   extraContainers: []
   # -- Grace period to allow memcached-chunks to shutdown before it is killed
@@ -1832,7 +1859,7 @@ memcachedChunks:
         - labelSelector:
             matchLabels:
               {{- include "loki.memcachedChunksSelectorLabels" . | nindent 10 }}
-          topologyKey: topology.kubernetes.io/zone
+          topologyKey: kubernetes.io/hostname
       preferredDuringSchedulingIgnoredDuringExecution:
         - weight: 100
           podAffinityTerm:
@@ -1840,47 +1867,38 @@ memcachedChunks:
               matchLabels:
                 {{- include "loki.memcachedChunksSelectorLabels" . | nindent 12 }}
             topologyKey: failure-domain.beta.kubernetes.io/zone
-    nodeAffinity:
-      requiredDuringSchedulingIgnoredDuringExecution:
-        nodeSelectorTerms:
-        - matchExpressions:
-          - key: Obs-NG
-            operator: In
-            values:
-            - observability-stateful-ng
-          - key: topology.kubernetes.io/zone
-            operator: In
-            values:
-            - us-west-2a
-            - us-west-2b
-            - us-west-2c
   # -- Pod Disruption Budget maxUnavailable
-  maxUnavailable: 1
+  maxUnavailable: null
   # -- Node selector for memcached-chunks pods
   nodeSelector: {}
   # -- Tolerations for memcached-chunks pods
-  tolerations:
-    - key: "dedicated"
-      operator: "Equal"
-      value: "monitoring"
-      effect: "NoSchedule"
+  tolerations: []
   persistence:
     # -- Enable creating PVCs which will persist cached data through restarts
-    enabled: true
+    enabled: false
     # -- Size of persistent or memory disk
-    size: 15Gi
+    size: 10Gi
     # -- Storage class to be used.
     # If defined, storageClassName: <storageClass>.
     # If set to "-", storageClassName: "", which disables dynamic provisioning.
     # If empty or set to null, no storageClassName spec is
     # set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).
     storageClass: null
+  # -- List of additional PVCs to be created for the memcached-chunks statefulset
+  volumeClaimTemplates: []
+  # -- List of additional volumes to be mounted for the memcached-chunks statefulset
+  extraVolumeMounts: []
 
 memcachedFrontend:
   # -- Specifies whether the Memcached frontend cache should be enabled
-  enabled: true
+  enabled: false
+  # -- hostAliases to add
+  hostAliases: []
+  #  - ip: 1.2.3.4
+  #    hostnames:
+  #      - domain.tld
   # -- Number of replicas for memcached-frontend
-  replicas: 3
+  replicas: 1
   # -- The name of the PriorityClass for memcached-frontend pods
   priorityClassName: null
   # -- Labels for memcached-frontend pods
@@ -1891,22 +1909,13 @@ memcachedFrontend:
   serviceLabels: {}
   # -- Additional CLI args for memcached-frontend
   extraArgs:
-    - -m 2048
     - -I 32m
-    - -vv
-
   # -- Environment variables to add to memcached-frontend pods
   extraEnv: []
   # -- Environment variables from secrets or configmaps to add to memcached-frontend pods
   extraEnvFrom: []
   # -- Resource requests and limits for memcached-frontend
-  resources:
-    limits:
-      cpu: 1
-      memory: 2Gi
-    requests:
-      cpu: 500m
-      memory: 500Mi
+  resources: {}
   # -- Containers to add to the memcached-frontend pods
   extraContainers: []
   # -- Grace period to allow memcached-frontend to shutdown before it is killed
@@ -1919,7 +1928,7 @@ memcachedFrontend:
         - labelSelector:
             matchLabels:
               {{- include "loki.memcachedFrontendSelectorLabels" . | nindent 10 }}
-          topologyKey: topology.kubernetes.io/zone
+          topologyKey: kubernetes.io/hostname
       preferredDuringSchedulingIgnoredDuringExecution:
         - weight: 100
           podAffinityTerm:
@@ -1927,33 +1936,15 @@ memcachedFrontend:
               matchLabels:
                 {{- include "loki.memcachedFrontendSelectorLabels" . | nindent 12 }}
             topologyKey: failure-domain.beta.kubernetes.io/zone
-    nodeAffinity:
-      requiredDuringSchedulingIgnoredDuringExecution:
-        nodeSelectorTerms:
-        - matchExpressions:
-          - key: Obs-NG
-            operator: In
-            values:
-            - observability-stateful-ng
-          - key: topology.kubernetes.io/zone
-            operator: In
-            values:
-            - us-west-2a
-            - us-west-2b
-            - us-west-2c
   # -- Pod Disruption Budget maxUnavailable
   maxUnavailable: 1
   # -- Node selector for memcached-frontend pods
   nodeSelector: {}
   # -- Tolerations for memcached-frontend pods
-  tolerations:
-    - key: "dedicated"
-      operator: "Equal"
-      value: "monitoring"
-      effect: "NoSchedule"
+  tolerations: []
   persistence:
     # -- Enable creating PVCs which will persist cached data through restarts
-    enabled: true
+    enabled: false
     # -- Size of persistent or memory disk
     size: 10Gi
     # -- Storage class to be used.
@@ -1965,9 +1956,14 @@ memcachedFrontend:
 
 memcachedIndexQueries:
   # -- Specifies whether the Memcached index queries cache should be enabled
-  enabled: true
+  enabled: false
   # -- Number of replicas for memcached-index-queries
-  replicas: 3
+  replicas: 1
+  # -- hostAliases to add
+  hostAliases: []
+  #  - ip: 1.2.3.4
+  #    hostnames:
+  #      - domain.tld
   # -- The name of the PriorityClass for memcached-index-queries pods
   priorityClassName: null
   # -- Labels for memcached-index-queries pods
@@ -1978,21 +1974,13 @@ memcachedIndexQueries:
   serviceLabels: {}
   # -- Additional CLI args for memcached-index-queries
   extraArgs:
-    - -m 1024
     - -I 32m
-    - -vv
   # -- Environment variables to add to memcached-index-queries pods
   extraEnv: []
   # -- Environment variables from secrets or configmaps to add to memcached-index-queries pods
   extraEnvFrom: []
   # -- Resource requests and limits for memcached-index-queries
-  resources:
-    limits:
-      cpu: 1
-      memory: 1Gi
-    requests:
-      cpu: 500m
-      memory: 500Mi
+  resources: {}
   # -- Containers to add to the memcached-index-queries pods
   extraContainers: []
   # -- Grace period to allow memcached-index-queries to shutdown before it is killed
@@ -2005,7 +1993,7 @@ memcachedIndexQueries:
         - labelSelector:
             matchLabels:
               {{- include "loki.memcachedIndexQueriesSelectorLabels" . | nindent 10 }}
-          topologyKey: topology.kubernetes.io/zone
+          topologyKey: kubernetes.io/hostname
       preferredDuringSchedulingIgnoredDuringExecution:
         - weight: 100
           podAffinityTerm:
@@ -2013,40 +2001,17 @@ memcachedIndexQueries:
               matchLabels:
                 {{- include "loki.memcachedIndexQueriesSelectorLabels" . | nindent 12 }}
             topologyKey: failure-domain.beta.kubernetes.io/zone
-    nodeAffinity:
-      requiredDuringSchedulingIgnoredDuringExecution:
-        nodeSelectorTerms:
-        - matchExpressions:
-          - key: Obs-NG
-            operator: In
-            values:
-            - observability-stateful-ng
-          - key: topology.kubernetes.io/zone
-            operator: In
-            values:
-            - us-west-2a
-            - us-west-2b
-            - us-west-2c
   # -- Pod Disruption Budget maxUnavailable
-  maxUnavailable: 1
+  maxUnavailable: null
   # -- Node selector for memcached-index-queries pods
   nodeSelector: {}
   # -- Tolerations for memcached-index-queries pods
-  tolerations:
-    - key: "dedicated"
-      operator: "Equal"
-      value: "monitoring"
-      effect: "NoSchedule"
+  tolerations: []
   persistence:
     # -- Enable creating PVCs which will persist cached data through restarts
-    enabled: true
+    enabled: false
     # -- Size of persistent or memory disk
     size: 10Gi
-    # -- Storage class to be used.
-    # If defined, storageClassName: <storageClass>.
-    # If set to "-", storageClassName: "", which disables dynamic provisioning.
-    # If empty or set to null, no storageClassName spec is
-    # set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).
     storageClass: null
 
 memcachedIndexWrites:
@@ -2054,6 +2019,11 @@ memcachedIndexWrites:
   enabled: false
   # -- Number of replicas for memcached-index-writes
   replicas: 1
+  # -- hostAliases to add
+  hostAliases: []
+  #  - ip: 1.2.3.4
+  #    hostnames:
+  #      - domain.tld
   # -- The name of the PriorityClass for memcached-index-writes pods
   priorityClassName: null
   # -- Labels for memcached-index-writes pods
