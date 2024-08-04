@@ -53,7 +53,7 @@ jobs:
 
     - name: Run tfsec
       id: tfsec
-      run: tfsec --tfvars-file './_1_eks/terraform.auto.tfvars' --soft-fail=true
+      run: tfsec --tfvars-file 'terraform.auto.tfvars' --soft-fail=true
 
     - name: Run checkov
       id: checkov
