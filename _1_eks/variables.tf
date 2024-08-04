@@ -186,3 +186,10 @@ variable "lbc_service_account_name" {
   description = "Namespace EKS service account"
   type        = string
 }
+
+# Nginx Ingress
+variable "nginx_namespace" {
+  description = "Namespace in which the resources are deployed"
+  type        = string
+  default     = "ingress-nginx"
+}

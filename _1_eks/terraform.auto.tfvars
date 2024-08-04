@@ -37,6 +37,9 @@ dns_service_account_name = "external-dns"
 lbc_namespace            = "kube-system"
 lbc_service_account_name = "aws-loadbalancer-sa"
 
+# Load balancer Controller
+nginx_namespace = "ingress-nginx"
+
 
 
 
