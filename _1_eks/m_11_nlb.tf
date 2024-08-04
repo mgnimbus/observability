@@ -7,9 +7,9 @@ resource "helm_release" "aws_lb_controller" {
 
   values = [templatefile("${path.module}/manifests/lbc/values.yaml", {
     role_arn             = aws_iam_role.irsa_lbc_role.arn
-    vpc_id               = data.terraform_remote_state.eks.outputs.vpc_id
+    vpc_id               = module.vpc.vpc_id
     region               = var.aws_region
-    eks_cluster          = data.terraform_remote_state.eks.outputs.cluster_id
+    eks_cluster          = aws_eks_cluster.eks_cluster.id
     service_account_name = var.lbc_service_account_name
   })]
 }
@@ -267,28 +267,26 @@ resource "aws_iam_policy" "irsa_lbc_policy" {
 resource "aws_iam_role" "irsa_lbc_role" {
   name = "${local.name}-lbc-cont-role"
 
-  assume_role_policy = <<POLICY
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Effect": "Allow",
-      "Principal": {
-        "Federated":  "${aws_iam_openid_connect_provider.oidc_provider.arn}"
-      },
-      "Action": "sts:AssumeRoleWithWebIdentity",
-      "Condition": {
-        "StringEquals": {
-          "${local.aws_iam_oidc_connect_provider_extract_from_arn}:aud": "sts.amazonaws.com",
-          "${local.aws_iam_oidc_connect_provider_extract_from_arn}:sub": "system:serviceaccount:${var.lbc_namespace}:${var.lbc_service_account_name}"
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action = "sts:AssumeRoleWithWebIdentity"
+        Effect = "Allow"
+        Sid    = ""
+        Principal = {
+          Federated = "${aws_iam_openid_connect_provider.oidc_provider.arn}"
+        }
+        Condition = {
+          StringEquals = {
+            "${local.aws_iam_oidc_connect_provider_extract_from_arn}:aud" : "sts.amazonaws.com",
+            "${local.aws_iam_oidc_connect_provider_extract_from_arn}:sub" : "system:serviceaccount:${var.lbc_namespace}:${var.lbc_service_account_name}"
+          }
         }
       }
-    }
-  ]
+    ]
+  })
 }
-POLICY
-}
-
 
 resource "aws_iam_role_policy_attachment" "EKSAmazonLBCRole" {
   policy_arn = aws_iam_policy.irsa_lbc_policy.arn
