@@ -1,17 +1,16 @@
-name: EKS-With-Terraform CI
+name: EKS-With-Terraform Destroy
 on: workflow_dispatch
-run-name: "Argus CI by ${{ github.actor }},through ${{ github.event_name }}"
+run-name: "Argus Destroy by ${{ github.actor }},through ${{ github.event_name }}"
 permissions:
   contents: read
 jobs:
-  CI-Checks:
-    name: "EKS Build"
+  delete_eks_stack:
+    name: "Delete EKS Stack"
     runs-on: ubuntu-latest
     defaults:
      run:
        shell: bash       
        working-directory: ./_1_eks
-    
     steps:
     - name: Checkout the repository to the runner
       uses: actions/checkout@v4
@@ -32,13 +31,7 @@ jobs:
       uses: hashicorp/setup-terraform@v3
       with:
         terraform_version: 1.4.4
-
-    - name: Install tfsec
-      run: curl -L https://github.com/liamg/tfsec/releases/latest/download/tfsec-linux-amd64 -o tfsec && chmod +x tfsec && sudo mv tfsec /usr/local/bin/
-
-    - name: Install checkov
-      run: pip install checkov    
-
+    
     - name: Terraform Init
       run: terraform init 
 
@@ -50,12 +43,8 @@ jobs:
     - name: Terraform Validate
       id: validate
       run: terraform validate -no-color
-
-    - name: Run tfsec
-      id: tfsec
-      run: tfsec --tfvars-file 'terraform.auto.tfvars' --soft-fail=true
-
-    - name: Run checkov
-      id: checkov
-      run: checkov -d . --quiet --soft-fail
-
+      
+    - name: Terraform Destroy
+      id: destroy
+      run: terraform destroy -auto-approve -no-color -input=false  
+   

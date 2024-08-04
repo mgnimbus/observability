@@ -1,0 +1,71 @@
+name: EKS-With-Terraform CD
+run-name: "Argus CD by ${{ github.actor }},through ${{ github.event_name }}"
+permissions:
+  contents: read
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  eks-deploy:
+    name: "Deploy EKS"
+    runs-on: ubuntu-latest
+    defaults:
+     run:
+       shell: bash       
+       working-directory: ./_1_eks
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Configure AWS Credentials
+      uses: aws-actions/configure-aws-credentials@v4.0.2
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: us-east-1
+   
+    - name: Test configuration of AWS CLI
+      run: |
+        aws --version
+        aws configure list | grep region | awk '{print $2}'
+
+    - name: Setup Terraform with specified version on the runner
+      uses: hashicorp/setup-terraform@v3
+      with:
+        terraform_version: 1.4.4
+
+    - name: Terraform Init
+      run: terraform init
+
+    - name: Terraform Format Check
+      run: terraform fmt -check=true
+
+    - name: Terraform Validate
+      run: terraform validate
+
+    - name: Terraform Plan
+      id: plan
+      run: terraform plan  -input=false -out=tfplan
+      continue-on-error: true 
+
+    - name: Check for Changes in Terraform Plan
+      id: plan_changes
+      run: echo "::set-output name=changed::$(terraform show -json tfplan | jq '.resource_changes | length > 0')"
+
+    - name: Terraform Apply
+      run: terraform apply -auto-approve
+
+    - name: Store Outputs
+      id: terraform_outputs
+      run: echo "::set-output name=outputs::$(terraform output -json)"
+
+    - name: Terraform Plan Status
+      if: steps.plan.outcome == 'failure'
+      run: exit 1
+
+    - name: Clean up
+      run: rm -f tfplan      
