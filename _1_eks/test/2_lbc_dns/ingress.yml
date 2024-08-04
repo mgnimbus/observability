@@ -27,7 +27,6 @@ metadata:
     alb.ingress.kubernetes.io/ssl-redirect: "443"
     external-dns.alpha.kubernetes.io/hostname: apptest.varidha.com
 spec:
-  ingressClassName: alb # Ingress Class
   defaultBackend:
     service:
       name: app3-nginx-nodeport-service

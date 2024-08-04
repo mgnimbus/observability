@@ -29,9 +29,13 @@ vpc_create_database_subnet_route_table = true
 vpc_enable_nat_gateway                 = true
 vpc_single_nat_gateway                 = true
 
-# DNS
+# Domain Name Service
 dns_namespace            = "external-dns"
 dns_service_account_name = "external-dns"
+
+# Load balancer Controller
+lbc_namespace            = "kube-system"
+lbc_service_account_name = "aws-loadbalancer-sa"
 
 
 

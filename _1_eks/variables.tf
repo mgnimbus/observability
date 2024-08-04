@@ -163,8 +163,7 @@ variable "account_id" {
 }
 
 
-# DNS
-
+# Domain Name Service
 variable "dns_namespace" {
   description = "Namespace in which the resources are deployed"
   type        = string
@@ -172,6 +171,18 @@ variable "dns_namespace" {
 }
 
 variable "dns_service_account_name" {
+  description = "Namespace EKS service account"
+  type        = string
+}
+
+# Load balancer Controller
+variable "lbc_namespace" {
+  description = "Namespace in which the resources are deployed"
+  type        = string
+  default     = "default"
+}
+
+variable "lbc_service_account_name" {
   description = "Namespace EKS service account"
   type        = string
 }
