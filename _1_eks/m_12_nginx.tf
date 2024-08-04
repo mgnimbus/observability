@@ -6,7 +6,7 @@ resource "helm_release" "ingress_nginx" {
   chart            = "ingress-nginx"
   create_namespace = true
 
-  values = [file("${path.module}/manifests/default.yaml")]
+  values = [file("${path.module}/manifests/nginx/values.yaml")]
 
   set {
     name  = "service.type"
