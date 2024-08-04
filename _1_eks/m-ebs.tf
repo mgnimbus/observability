@@ -74,25 +74,23 @@ resource "aws_iam_policy" "ebs_csi_irsa_policy" {
 resource "aws_iam_role" "ebs_csi_iam_role" {
   name = "${local.name}-ebs-role-test"
 
-  assume_role_policy = <<POLICY
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Effect": "Allow",
-      "Principal": {
-        "Federated": "${aws_iam_openid_connect_provider.oidc_provider.arn}"
-      },
-      "Action": "sts:AssumeRoleWithWebIdentity",
-      "Condition": {
-        "StringEquals": {
-          "${local.aws_iam_oidc_connect_provider_extract_from_arn}:sub": "system:serviceaccount:kube-system:argus-sc"
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow",
+        Principal = {
+          Federated = "${aws_iam_openid_connect_provider.oidc_provider.arn}"
+        },
+        Action = "sts:AssumeRoleWithWebIdentity",
+        Condition = {
+          StringEquals = {
+            "${local.aws_iam_oidc_connect_provider_extract_from_arn}:sub" : "system:serviceaccount:kube-system:argus-sc"
+          }
         }
       }
-    }
-  ]
-}
-POLICY
+    ]
+  })
 }
 
 
@@ -102,6 +100,4 @@ resource "aws_iam_role_policy_attachment" "EBSRole" {
 }
 
 
-data "aws_eks_cluster_auth" "cluster" {
-  name = aws_eks_cluster.eks_cluster.id
-}
+
