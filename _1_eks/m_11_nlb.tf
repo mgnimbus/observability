@@ -263,7 +263,7 @@ resource "aws_iam_policy" "irsa_lbc_policy" {
       }
     ]
   })
-  depends_on = [aws_eks_cluster.eks_cluster]
+  depends_on = [aws_eks_cluster.eks_cluster, aws_eks_node_group.eks_ng_private]
 }
 
 resource "aws_iam_role" "irsa_lbc_role" {
@@ -288,11 +288,11 @@ resource "aws_iam_role" "irsa_lbc_role" {
       }
     ]
   })
-  depends_on = [aws_eks_cluster.eks_cluster]
+  depends_on = [aws_eks_cluster.eks_cluster, aws_eks_node_group.eks_ng_private]
 }
 
 resource "aws_iam_role_policy_attachment" "EKSAmazonLBCRole" {
   policy_arn = aws_iam_policy.irsa_lbc_policy.arn
   role       = aws_iam_role.irsa_lbc_role.name
-  depends_on = [aws_eks_cluster.eks_cluster]
+  depends_on = [aws_eks_cluster.eks_cluster, aws_eks_node_group.eks_ng_private]
 }

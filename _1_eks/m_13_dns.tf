@@ -35,7 +35,7 @@ resource "helm_release" "external_dns" {
     name  = "policy" # Default is "upsert-only" which means DNS records will not get deleted even equivalent Ingress resources are deleted (https://github.com/kubernetes-sigs/external-dns/tree/master/charts/external-dns)
     value = "sync"   # "sync" will ensure that when ingress resource is deleted, equivalent DNS record in Route53 will get deleted
   }
-
+  depends_on = [aws_eks_cluster.eks_cluster, aws_eks_node_group.eks_ng_private]
 }
 
 
@@ -98,6 +98,7 @@ resource "aws_iam_role" "irsa_r53_role" {
   tags = {
     tag-key = "AllowExternalDNSUpdates"
   }
+  depends_on = [aws_eks_cluster.eks_cluster, aws_eks_node_group.eks_ng_private]
 }
 
 
@@ -105,4 +106,5 @@ resource "aws_iam_role" "irsa_r53_role" {
 resource "aws_iam_role_policy_attachment" "EKSAmazonr53Role" {
   policy_arn = aws_iam_policy.irsa_r53_policy.arn
   role       = aws_iam_role.irsa_r53_role.name
+  depends_on = [aws_eks_cluster.eks_cluster, aws_eks_node_group.eks_ng_private]
 }
