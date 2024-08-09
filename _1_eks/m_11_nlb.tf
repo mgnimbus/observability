@@ -12,7 +12,7 @@ resource "helm_release" "aws_lb_controller" {
     eks_cluster          = aws_eks_cluster.eks_cluster.id
     service_account_name = var.lbc_service_account_name
   })]
-  depends_on = [aws_eks_cluster.eks_cluster]
+  depends_on = [aws_eks_cluster.eks_cluster, aws_eks_node_group.eks_ng_private]
 }
 
 
