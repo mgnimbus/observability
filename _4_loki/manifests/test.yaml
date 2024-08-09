@@ -1,73 +1,278 @@
----
+global:
+  clusterDomain: cluster.local
+fullnameOverride: loki
+
+serviceAccount:
+  create: true
+  name: ${role_name}
+  annotations:
+    eks.amazonaws.com/role-arn: ${role_arn}
+  automountServiceAccountToken: true
+
 loki:
+  image:
+    registry: dockerhub-remote.dock.merck.com
+    repository: grafana/loki
   schemaConfig:
     configs:
-      - from: 2024-04-01
-        store: tsdb
-        object_store: s3
-        schema: v13
+      - from: "2023-01-20" # <---- A date in the future
         index:
-          prefix: loki_index_
           period: 24h
+          prefix: index_
+        object_store: aws
+        schema: v12
+        store: tsdb
   storageConfig:
     tsdb_shipper:
       shared_store: aws
       active_index_directory: /var/loki/index
       cache_location: /var/loki/cache
-    filesystem:
-      directory: /var/loki/chunks
     aws:
-      bucketnames: meda-dev-mule-loki-chunks
-      region: us-east-1
-  ingester:
-    chunk_encoding: snappy
-  tracing:
+      insecure: false
+      s3: s3://${loki_ruler_bucket}
+      region: ${region}
+      s3forcepathstyle: true
+  monitoring:
+    dashboards:
+      enabled: true
+    rules:
+      enabled: true
+    serviceMonitor:
+      enabled: true
+    selfMonitoring:
+      enabled: true
+      tenant:
+        name: "argus"
+  structuredConfig:
+    auth_enabled: true
+    server:
+      log_level: warn
+    limits_config:
+      retention_period: 30d
+      split_queries_by_interval: 15m
+      max_query_parallelism: 32
+      max_queriers_per_tenant: 5
+    query_scheduler:
+      max_outstanding_requests_per_tenant: 2048
+      grpc_client_config:
+        grpc_compression: snappy
+    query_range:
+      parallelise_shardable_queries: true
+      results_cache:
+        compression: snappy
+      index_stats_results_cache:
+        compression: snappy
+    frontend:
+      max_outstanding_per_tenant: 2048
+      compress_responses: true
+      grpc_client_config:
+        grpc_compression: snappy
+    frontend_worker:
+      grpc_client_config:
+        grpc_compression: snappy
+    common:
+      storage:
+        s3:
+          bucketnames: ${loki_chunks_bucket}
+          region: ${region}
+    analytics:
+      reporting_enabled: false
+    ruler:
+      storage:
+        type: s3
+        s3:
+          insecure: false
+          s3: s3://${loki_ruler_bucket}
+          region: us-east-1
+    compactor:
+      working_directory: /var/loki/compactor
+      retention_enabled: true
+    ingester_client:
+      grpc_client_config:
+        grpc_compression: snappy
+    storage_config:
+      boltdb_shipper:
+        index_gateway_client:
+          grpc_client_config:
+            grpc_compression: snappy
+
+# ServiceMonitor configuration
+serviceMonitor:
+  enabled: true
+
+# Rules for the Prometheus Operator
+prometheusRule:
+  enabled: true
+  groups:
+    - name: loki_rules
+      rules:
+        - expr:
+            histogram_quantile(0.99, sum(rate(loki_request_duration_seconds_bucket[60m]))
+            by (le, cluster, job))
+          record: cluster_job:loki_request_duration_seconds:99quantile
+        - expr:
+            histogram_quantile(0.50, sum(rate(loki_request_duration_seconds_bucket[60m]))
+            by (le, cluster, job))
+          record: cluster_job:loki_request_duration_seconds:50quantile
+        - expr:
+            sum(rate(loki_request_duration_seconds_sum[60m])) by (cluster, job) / sum(rate(loki_request_duration_seconds_count[60m]))
+            by (cluster, job)
+          record: cluster_job:loki_request_duration_seconds:avg
+        - expr: sum(rate(loki_request_duration_seconds_bucket[60m])) by (le, cluster, job)
+          record: cluster_job:loki_request_duration_seconds_bucket:sum_rate
+        - expr: sum(rate(loki_request_duration_seconds_sum[60m])) by (cluster, job)
+          record: cluster_job:loki_request_duration_seconds_sum:sum_rate
+        - expr: sum(rate(loki_request_duration_seconds_count[60m])) by (cluster, job)
+          record: cluster_job:loki_request_duration_seconds_count:sum_rate
+        - expr:
+            histogram_quantile(0.99, sum(rate(loki_request_duration_seconds_bucket[60m]))
+            by (le, cluster, job, route))
+          record: cluster_job_route:loki_request_duration_seconds:99quantile
+        - expr:
+            histogram_quantile(0.50, sum(rate(loki_request_duration_seconds_bucket[60m]))
+            by (le, cluster, job, route))
+          record: cluster_job_route:loki_request_duration_seconds:50quantile
+        - expr:
+            sum(rate(loki_request_duration_seconds_sum[60m])) by (cluster, job, route)
+            / sum(rate(loki_request_duration_seconds_count[60m])) by (cluster, job, route)
+          record: cluster_job_route:loki_request_duration_seconds:avg
+        - expr:
+            sum(rate(loki_request_duration_seconds_bucket[60m])) by (le, cluster, job,
+            route)
+          record: cluster_job_route:loki_request_duration_seconds_bucket:sum_rate
+        - expr: sum(rate(loki_request_duration_seconds_sum[60m])) by (cluster, job, route)
+          record: cluster_job_route:loki_request_duration_seconds_sum:sum_rate
+        - expr: sum(rate(loki_request_duration_seconds_count[60m])) by (cluster, job, route)
+          record: cluster_job_route:loki_request_duration_seconds_count:sum_rate
+        - expr:
+            histogram_quantile(0.99, sum(rate(loki_request_duration_seconds_bucket[60m]))
+            by (le, cluster, namespace, job, route))
+          record: cluster_namespace_job_route:loki_request_duration_seconds:99quantile
+        - expr:
+            histogram_quantile(0.50, sum(rate(loki_request_duration_seconds_bucket[60m]))
+            by (le, cluster, namespace, job, route))
+          record: cluster_namespace_job_route:loki_request_duration_seconds:50quantile
+        - expr:
+            sum(rate(loki_request_duration_seconds_sum[60m])) by (cluster, namespace,
+            job, route) / sum(rate(loki_request_duration_seconds_count[60m])) by (cluster,
+            namespace, job, route)
+          record: cluster_namespace_job_route:loki_request_duration_seconds:avg
+        - expr:
+            sum(rate(loki_request_duration_seconds_bucket[60m])) by (le, cluster, namespace,
+            job, route)
+          record: cluster_namespace_job_route:loki_request_duration_seconds_bucket:sum_rate
+        - expr:
+            sum(rate(loki_request_duration_seconds_sum[60m])) by (cluster, namespace,
+            job, route)
+          record: cluster_namespace_job_route:loki_request_duration_seconds_sum:sum_rate
+        - expr:
+            sum(rate(loki_request_duration_seconds_count[60m])) by (cluster, namespace,
+            job, route)
+          record: cluster_namespace_job_route:loki_request_duration_seconds_count:sum_rate
+
+# Configuration for the ingester
+ingester:
+  kind: StatefulSet
+  replicas: 2
+  maxUnavailable: 1
+  persistence:
     enabled: true
-  querier:
-    # Default is 4, if you have enough memory and CPU you can increase, reduce if OOMing
-    max_concurrent: 4
+    size: 10Gi
+    storageClass: obsrv-sc
 
-#gateway:
-#  ingress:
-#    enabled: true
-#    hosts:
-#      - host: FIXME
-#        paths:
-#          - path: /
-#            pathType: Prefix
+queryFrontend:
+  autoscaling:
+    enabled: true
+    minReplicas: 1
+    maxReplicas: 3
+    targetCPUUtilizationPercentage: 60
+    targetMemoryUtilizationPercentage: 80
+  maxUnavailable: 1
 
-deploymentMode: SimpleScalable
+# Configuration for the query-scheduler
+queryScheduler:
+  enabled: true
+  autoscaling:
+    enabled: true
+    minReplicas: 1
+    maxReplicas: 3
+    targetCPUUtilizationPercentage: 60
+    targetMemoryUtilizationPercentage: 80
+  maxUnavailable: 1
 
-backend:
-  replicas: 3
-read:
-  replicas: 3
-write:
-  replicas: 3
-
-# Enable minio for storage
-minio:
+# Configuration for the table-manager
+tableManager:
   enabled: false
 
-# Zero out replica counts of other deployment modes
-singleBinary:
-  replicas: 0
+# Configuration for the gateway
+gateway:
+  enabled: true
+  replicas: 2
+  verboseLogging: true
+  autoscaling:
+    enabled: true
+    minReplicas: 1
+    maxReplicas: 2
+    targetCPUUtilizationPercentage: 60
+    targetMemoryUtilizationPercentage: 80
+  maxUnavailable: 1
+  image:
+    registry: dockerhub-remote.dock.merck.com
+    repository: nginxinc/nginx-unprivileged
 
-ingester:
-  replicas: 0
-querier:
-  replicas: 0
-queryFrontend:
-  replicas: 0
-queryScheduler:
-  replicas: 0
-distributor:
-  replicas: 0
 compactor:
-  replicas: 0
+  enabled: true
+  persistence:
+    enabled: true
+    size: 50Gi
+    storageClass: obsrv-sc
+
+# Configuration for the ruler
+ruler:
+  enabled: true
+  kind: Deployment
+  replicas: 2
+  maxUnavailable: 1
+
+# Configuration for the index-gateway
 indexGateway:
-  replicas: 0
-bloomCompactor:
-  replicas: 0
-bloomGateway:
-  replicas: 0
+  enabled: true
+  autoscaling:
+    enabled: true
+    minReplicas: 1
+    maxReplicas: 2
+    targetCPUUtilizationPercentage: 60
+    targetMemoryUtilizationPercentage: 80
+  maxUnavailable: 1
+
+memcachedExporter:
+  enabled: true
+  image:
+    registry: dockerhub-remote.dock.merck.com
+    repository: prom/memcached-exporter
+
+memcachedChunks:
+  enabled: true
+  replicas: 1
+
+memcachedFrontend:
+  enabled: true
+  replicas: 1
+
+memcachedIndexQueries:
+  enabled: true
+  replicas: 1
+
+memcachedIndexWrites:
+  enabled: true
+  replicas: 1
+
+memcached:
+  image:
+    registry: docker.io
+    repository: memcached
+
+nginx:
+  image:
+    registry: ocker.io
+    repository: nginxinc/nginx-unprivileged

@@ -3,17 +3,18 @@ resource "helm_release" "loki" {
   name             = "loki"
   repository       = "https://grafana.github.io/helm-charts"
   chart            = "grafana"
-  namespace        = "loki"
+  namespace        = var.namespace
   create_namespace = true
 
   values = [
-    templatefile("${path.module}/manifests/def.yaml", {
-
+    templatefile("${path.module}/manifests/loki/default.yaml", {
+      role_name          = "loki-sa"
+      role_arn           = aws_iam_role.irsa_s3_role.arn
+      loki_ruler_bucket  = "meda-dev-mackerel-loki-ruler"
+      loki_chunks_bucket = "meda-dev-mackerel-loki-chunks"
+      region             = "us-east-1"
       }
   )]
-  # set {
-  #   name  = "service.type"
-  #   value = "LoadBalancer"
-  # }
+
 }
 

@@ -24,6 +24,7 @@ resource "aws_eks_cluster" "eks_cluster" {
   depends_on = [
     aws_iam_role_policy_attachment.eks-AmazonEKSClusterPolicy,
     aws_iam_role_policy_attachment.eks-AmazonEKSVPCResourceController,
+    module.vpc
   ]
   tags = {
     Name = "observability-test-eks"
@@ -119,7 +120,7 @@ resource "aws_eks_node_group" "eks_ng_private" {
   ami_type       = "BOTTLEROCKET_x86_64" # AL2_x86_64
   capacity_type  = "ON_DEMAND"
   disk_size      = 100
-  instance_types = ["t3a.large"] # t3.medium 
+  instance_types = ["t4g.xlarge"] # t3.medium 
 
 
   remote_access {
@@ -127,9 +128,9 @@ resource "aws_eks_node_group" "eks_ng_private" {
   }
 
   scaling_config {
-    desired_size = 1
-    min_size     = 1
-    max_size     = 2
+    desired_size = 2
+    min_size     = 2
+    max_size     = 3
   }
 
   # Desired max percentage of unavailable worker nodes during node group update.
@@ -144,6 +145,7 @@ resource "aws_eks_node_group" "eks_ng_private" {
     aws_iam_role_policy_attachment.eks-AmazonEKSWorkerNodePolicy,
     aws_iam_role_policy_attachment.eks-AmazonEKS_CNI_Policy,
     aws_iam_role_policy_attachment.eks-AmazonEC2ContainerRegistryReadOnly,
+    module.vpc
   ]
   tags = {
     Name = "${local.name}-private-node-group"

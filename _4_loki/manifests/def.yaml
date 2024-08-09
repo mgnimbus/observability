@@ -1,30 +1,18 @@
 global:
   image:
-    # -- Overrides the Docker registry globally for all images
     registry: null
-  # -- Overrides the priorityClassName for all pods
   priorityClassName: null
-  # -- configures cluster domain ("cluster.local" by default)
   clusterDomain: "cluster.local"
-  # -- configures DNS service name
   dnsService: "kube-dns"
-  # -- configures DNS service namespace
   dnsNamespace: "kube-system"
 
-# -- Overrides the chart's name
 nameOverride: null
 
-# -- Overrides the chart's computed fullname
 fullnameOverride: null
 
-# -- Image pull secrets for Docker images
 imagePullSecrets: []
 
-# -- hostAliases to add
 hostAliases: []
-#  - ip: 1.2.3.4
-#    hostnames:
-#      - domain.tld
 
 loki:
   # -- If set, these annotations are added to all of the Kubernetes controllers
@@ -312,16 +300,17 @@ runtimeConfig: {}
 
 serviceAccount:
   # -- Specifies whether a ServiceAccount should be created
-  create: false
+  create: true
   # -- The name of the ServiceAccount to use.
   # If not set and create is true, a name is generated using the fullname template
-  name: loki
+  name: ${role_name}
   # -- Image pull secrets for the service account
   imagePullSecrets: []
   # -- Labels for the service account
   labels: {}
   # -- Annotations for the service account
-  annotations: {}
+  annotations:
+    eks.amazonaws.com/role-arn: ${role_arn}
   # -- Set this toggle to false to opt out of automounting API credentials for the service account
   automountServiceAccountToken: true
 
@@ -1072,7 +1061,7 @@ ingress:
 # Configuration for the gateway
 gateway:
   # -- Specifies whether the gateway should be enabled
-  enabled: true
+  enabled: false
   # -- hostAliases to add
   hostAliases: []
   #  - ip: 1.2.3.4

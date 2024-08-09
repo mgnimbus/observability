@@ -12,6 +12,7 @@ resource "helm_release" "aws_lb_controller" {
     eks_cluster          = aws_eks_cluster.eks_cluster.id
     service_account_name = var.lbc_service_account_name
   })]
+  depends_on = [aws_eks_cluster.eks_cluster]
 }
 
 
@@ -262,6 +263,7 @@ resource "aws_iam_policy" "irsa_lbc_policy" {
       }
     ]
   })
+  depends_on = [aws_eks_cluster.eks_cluster]
 }
 
 resource "aws_iam_role" "irsa_lbc_role" {
@@ -286,9 +288,11 @@ resource "aws_iam_role" "irsa_lbc_role" {
       }
     ]
   })
+  depends_on = [aws_eks_cluster.eks_cluster]
 }
 
 resource "aws_iam_role_policy_attachment" "EKSAmazonLBCRole" {
   policy_arn = aws_iam_policy.irsa_lbc_policy.arn
   role       = aws_iam_role.irsa_lbc_role.name
+  depends_on = [aws_eks_cluster.eks_cluster]
 }

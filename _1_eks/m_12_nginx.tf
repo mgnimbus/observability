@@ -57,5 +57,5 @@ resource "helm_release" "ingress_nginx" {
     name  = "controller.service.annotations.service\\.beta\\.kubernetes\\.io/aws-load-balancer-backend-protocol"
     value = "tcp"
   }
-
+  depends_on = [helm_release.aws_lb_controller, aws_eks_node_group.eks_ng_private]
 }
