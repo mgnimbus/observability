@@ -1,0 +1,4 @@
+namespace: external-dns
+provider:
+  name: aws
+policy: sync

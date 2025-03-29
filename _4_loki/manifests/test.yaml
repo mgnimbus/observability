@@ -11,7 +11,6 @@ serviceAccount:
 
 loki:
   image:
-    registry: dockerhub-remote.dock.merck.com
     repository: grafana/loki
   schemaConfig:
     configs:
@@ -217,7 +216,6 @@ gateway:
     targetMemoryUtilizationPercentage: 80
   maxUnavailable: 1
   image:
-    registry: dockerhub-remote.dock.merck.com
     repository: nginxinc/nginx-unprivileged
 
 compactor:
@@ -248,7 +246,6 @@ indexGateway:
 memcachedExporter:
   enabled: true
   image:
-    registry: dockerhub-remote.dock.merck.com
     repository: prom/memcached-exporter
 
 memcachedChunks:

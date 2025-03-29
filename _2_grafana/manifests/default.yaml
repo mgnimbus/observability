@@ -445,11 +445,11 @@ adminUser: admin
 adminPassword: gowthamm
 
 # Use an existing secret for the admin user.
-admin:
-  ## Name of the secret. Can be templated.
-  existingSecret: ""
-  userKey: admin-user
-  passwordKey: admin-password
+# admin:
+#   ## Name of the secret. Can be templated.
+#   existingSecret: ""
+#   userKey: admin-user
+#   passwordKey: admin-password
 
 ## Define command to be executed at startup by grafana container
 ## Needed if using `vault-env` to manage secrets (ref: https://banzaicloud.com/blog/inject-secrets-into-pods-vault/)
@@ -619,25 +619,38 @@ plugins:
 ## Configure grafana datasources
 ## ref: http://docs.grafana.org/administration/provisioning/#datasources
 ##
-datasources: {}
-#  datasources.yaml:
-#    apiVersion: 1
-#    datasources:
-#    - name: Prometheus
-#      type: prometheus
-#      url: http://prometheus-prometheus-server
-#      access: proxy
-#      isDefault: true
-#    - name: CloudWatch
-#      type: cloudwatch
-#      access: proxy
-#      uid: cloudwatch
-#      editable: false
-#      jsonData:
-#        authType: default
-#        defaultRegion: us-east-1
-#    deleteDatasources: []
-#    - name: Prometheus
+datasources:
+  datasources.yaml:
+    apiVersion: 1
+    # -- Datasources linked to the Grafana instance. Override if you disable any components.
+    datasources:
+      # https://grafana.com/docs/grafana/latest/datasources/loki/#provision-the-loki-data-source
+      - name: Loki
+        uid: loki
+        type: loki
+        url: http://{{ .Release.Name }}-loki-gateway
+        isDefault: false
+      # https://grafana.com/docs/grafana/latest/datasources/prometheus/#provision-the-data-source
+      - name: Mimir
+        uid: prom
+        type: prometheus
+        url: http://{{ .Release.Name }}-mimir-nginx/prometheus
+        isDefault: true
+      # https://grafana.com/docs/grafana/latest/datasources/tempo/configure-tempo-data-source/#provision-the-data-source
+      - name: Tempo
+        uid: tempo
+        type: tempo
+        url: http://{{ .Release.Name }}-tempo-query-frontend:3100
+        isDefault: false
+        jsonData:
+          tracesToLogsV2:
+            datasourceUid: loki
+          lokiSearch:
+            datasourceUid: loki
+          tracesToMetrics:
+            datasourceUid: prom
+          serviceMap:
+            datasourceUid: prom
 
 ## Configure grafana alerting (can be templated)
 ## ref: http://docs.grafana.org/administration/provisioning/#alerting

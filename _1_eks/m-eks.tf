@@ -120,7 +120,7 @@ resource "aws_eks_node_group" "eks_ng_private" {
   ami_type       = "BOTTLEROCKET_x86_64" # AL2_x86_64
   capacity_type  = "SPOT"
   disk_size      = 100
-  instance_types = ["c4.2xlarge"] # t3.medium 
+  instance_types = ["m5a.large"] # t3.medium 
 
 
   remote_access {

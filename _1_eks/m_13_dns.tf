@@ -6,40 +6,25 @@ resource "helm_release" "external_dns" {
   create_namespace = true
   namespace        = var.dns_namespace
 
-  set {
-    name  = "image.repository"
-    value = "registry.k8s.io/external-dns/external-dns"
-  }
-
-  set {
-    name  = "serviceAccount.create"
-    value = "true"
-  }
-
-  set {
-    name  = "serviceAccount.name"
-    value = var.dns_service_account_name
-  }
-
-  set {
-    name  = "serviceAccount.annotations.eks\\.amazonaws\\.com/role-arn"
-    value = aws_iam_role.irsa_r53_role.arn
-  }
-
-  set {
-    name  = "provider" # Default is aws (https://github.com/kubernetes-sigs/external-dns/tree/master/charts/external-dns)
-    value = "aws"
-  }
-
-  set {
-    name  = "policy" # Default is "upsert-only" which means DNS records will not get deleted even equivalent Ingress resources are deleted (https://github.com/kubernetes-sigs/external-dns/tree/master/charts/external-dns)
-    value = "sync"   # "sync" will ensure that when ingress resource is deleted, equivalent DNS record in Route53 will get deleted
-  }
+  values = [
+    templatefile("${path.module}/manifests/dns/dns.yaml", {
+      sa_name  = var.dns_service_account_name
+      role_arn = aws_iam_role.irsa_r53_role.arn
+      }
+  )]
   depends_on = [aws_eks_cluster.eks_cluster, aws_eks_node_group.eks_ng_private]
 }
 
+# k create ns external-dns
+# kubectl create serviceaccount "external-dns" --namespace external-dns
 
-## IAM Role ##
+# kubectl patch serviceaccount "external-dns" --namespace external-dns --patch \
+#  "{\"metadata\": { \"annotations\": { \"eks.amazonaws.com/role-arn\": \"arn:aws:iam::058264194719:role/meda-dev-mantis-r53-role-test\" }}}"
+# # helm upgrade --install external-dns external-dns/external-dns --values dns.yaml
+# kubectl label serviceaccount external-dns app.kubernetes.io/managed-by=Helm --namespace external-dns
+# kubectl annotate serviceaccount external-dns meta.helm.sh/release-name=external-dns --namespace external-dns
+# kubectl annotate serviceaccount external-dns meta.helm.sh/release-namespace=external-dns --namespace external-dns
+
 
 resource "aws_iam_policy" "irsa_r53_policy" {
   name        = "${local.name}-r53-policy"
