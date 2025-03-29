@@ -9,8 +9,6 @@ serviceAccount:
     eks.amazonaws.com/role-arn: ${role_arn}
   automountServiceAccountToken: true
 
-deploymentMode: Distributed
-
 loki:
   image:
     repository: grafana/loki
@@ -110,44 +108,137 @@ prometheusRule:
   groups:
     - name: loki_rules
 
+# Configuration for the ingester
 ingester:
+  kind: StatefulSet
   replicas: 2
-querier:
-  replicas: 2
-  maxUnavailable: 2
+  maxUnavailable: 1
+  persistence:
+    enabled: true
+    size: 10Gi
+    storageClassName: obsrv-sc
+
 queryFrontend:
-  replicas: 1
+  autoscaling:
+    enabled: true
+    minReplicas: 1
+    maxReplicas: 3
+    targetCPUUtilizationPercentage: 60
+    targetMemoryUtilizationPercentage: 80
   maxUnavailable: 1
+  resources:
+    requests:
+      cpu: 20m
+
+# Configuration for the query-scheduler
 queryScheduler:
-  replicas: 2
-distributor:
-  replicas: 2
-  maxUnavailable: 2
-compactor:
-  replicas: 1
-indexGateway:
-  replicas: 1
+  enabled: true
+  autoscaling:
+    enabled: true
+    minReplicas: 1
+    maxReplicas: 3
+    targetCPUUtilizationPercentage: 60
+    targetMemoryUtilizationPercentage: 80
   maxUnavailable: 1
+  resources:
+    requests:
+      cpu: 20m
 
-# optional experimental components
-bloomPlanner:
-  replicas: 0
-bloomBuilder:
-  replicas: 0
-bloomGateway:
-  replicas: 0
-
-# Enable minio for storage
-minio:
+# Configuration for the table-manager
+tableManager:
   enabled: false
 
-# Zero out replica counts of other deployment modes
-backend:
-  replicas: 0
-read:
-  replicas: 0
-write:
-  replicas: 0
+# Configuration for the gateway
+gateway:
+  enabled: true
+  verboseLogging: true
+  autoscaling:
+    enabled: true
+    minReplicas: 1
+    maxReplicas: 2
+    targetCPUUtilizationPercentage: 60
+    targetMemoryUtilizationPercentage: 80
+  maxUnavailable: 1
+  image:
+    repository: nginxinc/nginx-unprivileged
+  resources:
+    requests:
+      cpu: 20m
 
-singleBinary:
-  replicas: 0
+compactor:
+  replicas: 1
+  enabled: true
+  persistence:
+    enabled: true
+    size: 50Gi
+    storageClassName: obsrv-sc
+  resources:
+    requests:
+      cpu: 20m
+
+# Configuration for the ruler
+ruler:
+  enabled: true
+  kind: Deployment
+  replicas: 2
+  maxUnavailable: 1
+  resources:
+    requests:
+      cpu: 20m
+
+# Configuration for the index-gateway
+indexGateway:
+  enabled: true
+  autoscaling:
+    enabled: true
+    minReplicas: 1
+    maxReplicas: 2
+    targetCPUUtilizationPercentage: 60
+    targetMemoryUtilizationPercentage: 80
+  maxUnavailable: 1
+  resources:
+    requests:
+      cpu: 20m
+
+memcachedExporter:
+  enabled: true
+  image:
+    repository: prom/memcached-exporter
+
+memcachedChunks:
+  enabled: true
+  replicas: 1
+  resources:
+    requests:
+      cpu: 20m
+
+memcachedFrontend:
+  enabled: true
+  replicas: 1
+  resources:
+    requests:
+      cpu: 20m
+
+memcachedIndexQueries:
+  enabled: true
+  replicas: 1
+  resources:
+    requests:
+      cpu: 20m
+
+memcachedIndexWrites:
+  enabled: true
+  replicas: 1
+  resources:
+    requests:
+      cpu: 20m
+
+memcached:
+  image:
+    registry: docker.io
+    repository: memcached
+
+nginx:
+  image:
+    registry: docker.io
+    repository: nginxinc/nginx-unprivileged

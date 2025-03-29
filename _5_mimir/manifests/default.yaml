@@ -21,6 +21,8 @@ serviceAccount:
 
 mimir:
   structuredConfig:
+    enable_go_runtime_metrics: true
+    multitenancy_enabled: true
     usage_stats:
       enabled: false
       installation_mode: helm
@@ -31,13 +33,12 @@ mimir:
       s3:
         bucket_name: meda-dev-mackerel-mimir-chunks
         insecure: false
+        endpoint: s3.amazonaws.com
       tsdb:
         dir: /data/tsdb
     compactor:
       data_dir: /data
-    multitenancy_enabled: false
     frontend:
-      align_queries_with_step: true
       log_queries_longer_than: 10s
     ingester:
       instance_limits:
@@ -59,65 +60,95 @@ mimir:
       max_global_series_per_metric: 0
       max_global_series_per_user: 0
       max_label_names_per_series: 40
+      align_queries_with_step: true
     memberlist:
       abort_if_cluster_join_fails: false
       compression_enabled: false
 
-  alertmanager:
-    resources:
-      requests:
-        cpu: 20m
-  compactor:
-    resources:
-      requests:
-        cpu: 20m
-  distributor:
-    resources:
-      requests:
-        cpu: 20m
-  ingester:
-    replicas: 2
-    zoneAwareReplication:
-      enabled: false
-    resources:
-      requests:
-        cpu: 20m
-  overrides_exporter:
-    resources:
-      requests:
-        cpu: 20m
-  querier:
-    replicas: 1
-    resources:
-      requests:
-        cpu: 20m
-  query_frontend:
-    resources:
-      requests:
-        cpu: 20m
-  query_scheduler:
-    replicas: 1
-    resources:
-      requests:
-        cpu: 20m
-  ruler:
-    resources:
-      requests:
-        cpu: 20m
-  store_gateway:
-    zoneAwareReplication:
-      enabled: false
-    resources:
-      requests:
-        cpu: 20m
-  minio:
-    resources:
-      requests:
-        cpu: 20m
-  rollout_operator:
-    resources:
-      requests:
-        cpu: 20m
+alertmanager:
+  zoneAwareReplication:
+    enabled: false
+  resources:
+    requests:
+      cpu: 20m
+  persistentVolume:
+    enabled: true
+    name: storage
+    storageClass: obsrv-sc
+    size: 10Gi
+
+compactor:
+  persistentVolume:
+    enabled: true
+    name: storage
+    storageClass: obsrv-sc
+    size: 10Gi
+  resources:
+    requests:
+      cpu: 20m
+
+distributor:
+  resources:
+    requests:
+      cpu: 20m
+
+ingester:
+  replicas: 2
+  persistentVolume:
+    enabled: true
+    name: storage
+    storageClass: obsrv-sc
+    size: 10Gi
+  zoneAwareReplication:
+    enabled: false
+  resources:
+    requests:
+      cpu: 20m
+
+overrides_exporter:
+  resources:
+    requests:
+      cpu: 20m
+
+querier:
+  replicas: 1
+  resources:
+    requests:
+      cpu: 20m
+
+query_frontend:
+  resources:
+    requests:
+      cpu: 20m
+
+query_scheduler:
+  replicas: 1
+  resources:
+    requests:
+      cpu: 20m
+
+ruler:
+  resources:
+    requests:
+      cpu: 20m
+
+store_gateway:
+  persistentVolume:
+    enabled: true
+    name: storage
+    storageClass: obsrv-sc
+    size: 10Gi
+  replicas: 2
+  zoneAwareReplication:
+    enabled: false
+  resources:
+    requests:
+      cpu: 20m
+
+rollout_operator:
+  resources:
+    requests:
+      cpu: 20m
 
 minio:
   enabled: false
