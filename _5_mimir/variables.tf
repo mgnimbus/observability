@@ -26,11 +26,9 @@ variable "business_divsion" {
 variable "namespace" {
   description = "Namespace in which the resources are deployed"
   type        = string
-  default     = "default"
 }
 
 variable "service_account_name" {
   description = "Namespace EKS service account"
   type        = string
-  default     = "irsa-sa"
 }

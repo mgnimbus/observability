@@ -33,18 +33,11 @@ rbac:
   #   resources: []
   #   verbs: []
 serviceAccount:
+  serviceAccount:
   create: true
-  name:
-  nameTest:
-  ## ServiceAccount labels.
-  labels: {}
-  ## Service account annotations. Can be templated.
-  #  annotations:
-  #    eks.amazonaws.com/role-arn: arn:aws:iam::123456789000:role/iam-role-name-here
-
-  ## autoMount is deprecated in favor of automountServiceAccountToken
-  # autoMount: false
-  automountServiceAccountToken: false
+  name: ${service_account_name}
+  annotations:
+    eks.amazonaws.com/role-arn: ${role_arn}
 
 replicas: 1
 
@@ -280,6 +273,11 @@ ingress:
   # Values can be templated
   annotations:
     kubernetes.io/ingress.class: nginx
+    service.beta.kubernetes.io/aws-load-balancer-ssl-cert: arn:aws:acm:us-east-1:058264194719:certificate/442d0a9c-5bb3-43ba-8ad2-27e53a40f0f6
+    service.beta.kubernetes.io/aws-load-balancer-ssl-ports: 443, # Specify this annotation if you need both TLS and non-TLS listeners on the same load balancer
+    service.beta.kubernetes.io/aws-load-balancer-ssl-negotiation-policy: ELBSecurityPolicy-TLS13-1-2-2021-06
+    service.beta.kubernetes.io/aws-load-balancer-backend-protocol: tcp
+
     # kubernetes.io/tls-acme: "true"
   labels: {}
   path: /
@@ -309,13 +307,13 @@ ingress:
   #    hosts:
   #      - chart-example.local
 
-resources: {}
-#  limits:
-#    cpu: 100m
-#    memory: 128Mi
-#  requests:
-#    cpu: 100m
-#    memory: 128Mi
+resources:
+  limits:
+    cpu: 50m
+    memory: 128Mi
+  requests:
+    cpu: 50m
+    memory: 128Mi
 
 ## Node labels for pod assignment
 ## ref: https://kubernetes.io/docs/user-guide/node-selection/

@@ -4,4 +4,5 @@ region           = "us-east-1"
 environment      = "dev"
 business_divsion = "meda"
 
-namespace = "grafana"
+namespace            = "grafana"
+service_account_name = "gafa-sa"

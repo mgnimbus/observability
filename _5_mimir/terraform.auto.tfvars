@@ -4,6 +4,6 @@ region           = "us-east-1"
 environment      = "dev"
 business_divsion = "meda"
 
-namespace            = "grafana"
-service_account_name = "sa"
+namespace            = "mimir"
+service_account_name = "mimir-sa"
 

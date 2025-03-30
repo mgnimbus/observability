@@ -15,7 +15,7 @@ global:
 
 serviceAccount:
   create: true
-  name: mimir-s3
+  name: ${service_account_name}
   annotations:
     eks.amazonaws.com/role-arn: ${role_arn}
 

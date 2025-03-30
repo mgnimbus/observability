@@ -23,14 +23,14 @@ variable "business_divsion" {
   default     = "SAP"
 }
 
-variable "namespace" {
-  description = "Namespace in which the resources are deployed"
-  type        = string
-  default     = "default"
-}
+# variable "namespace" {
+#   description = "Namespace in which the resources are deployed"
+#   type        = string
+#   default     = "default"
+# }
 
-variable "service_account_name" {
-  description = "Namespace EKS service account"
-  type        = string
-  default     = "irsa-sa"
-}
+# variable "service_account_name" {
+#   description = "Namespace EKS service account"
+#   type        = string
+#   default     = "irsa-sa"
+# }
