@@ -205,7 +205,7 @@ controller:
   # -- Additional command line arguments to pass to Ingress-Nginx Controller
   # E.g. to specify the default SSL certificate you can use
   extraArgs:
-    default-ssl-certificate: "$(POD_NAMESPACE)/zues-com-cert"
+    default-ssl-certificate: "$(POD_NAMESPACE)/zues-com-tls"
 
   # -- Additional environment variables to set
   extraEnvs: []
