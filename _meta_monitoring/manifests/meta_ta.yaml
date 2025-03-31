@@ -179,7 +179,6 @@ spec:
         headers:
           X-Scope-OrgId: obsrv
         tls:
-          insecure_skip_verify: true 
           insecure: true
 
         compression: snappy

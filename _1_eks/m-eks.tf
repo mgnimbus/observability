@@ -118,7 +118,7 @@ resource "aws_eks_node_group" "eks_ng_private" {
   #version = var.cluster_version #(Optional: Defaults to EKS Cluster Kubernetes version)    
 
   ami_type       = "BOTTLEROCKET_x86_64" # AL2_x86_64
-  capacity_type  = "SPOT"
+  capacity_type  = "ON_DEMAND"           # "SPOT"
   disk_size      = 100
   instance_types = ["m5a.large"] # t3.medium 
 

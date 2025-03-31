@@ -175,9 +175,8 @@ spec:
             new_name: $$${1}
     exporters:
       otlp:
-        endpoint: "http://otel.varidha.com:80"
+        endpoint: "https://otel.varidha.com:443"
         tls:
-          insecure_skip_verify: true
           insecure: true
         headers:
           X-Scope-OrgId: obsrv

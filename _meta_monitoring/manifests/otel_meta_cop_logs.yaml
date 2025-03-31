@@ -200,7 +200,6 @@ config:
         - action: upsert
           key: otel.collector.id
           value: ${collector_id}-logs
-        - action: upsert
     resourcedetection:
       detectors: [env, system, ec2]
       timeout: 2s
@@ -230,7 +229,6 @@ config:
     otlp:
       endpoint: "https://otel.varidha.com:443"
       tls:
-        insecure_skip_verify: true
         insecure: true
       headers:
         X-Scope-OrgId: obsrv
