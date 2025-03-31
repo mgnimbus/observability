@@ -193,3 +193,21 @@ variable "nginx_namespace" {
   type        = string
   default     = "ingress-nginx"
 }
+
+variable "vpc_id" {
+  default     = "VPC ID"
+  description = "VPC ID"
+  type        = string
+}
+
+variable "public_subenets" {
+  default     = []
+  description = "Subnet ID's"
+  type        = set(string)
+}
+
+variable "private_subenets" {
+  default     = []
+  description = "Subnet ID's"
+  type        = set(string)
+}

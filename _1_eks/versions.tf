@@ -19,6 +19,10 @@ terraform {
       source  = "hashicorp/kubernetes"
       version = "2.30.0"
     }
+    kubectl = {
+      source  = "alekc/kubectl"
+      version = "2.1.3"
+    }
   }
 
 }
@@ -36,6 +40,12 @@ provider "helm" {
 }
 
 provider "kubernetes" {
+  host                   = aws_eks_cluster.eks_cluster.endpoint
+  cluster_ca_certificate = base64decode(aws_eks_cluster.eks_cluster.certificate_authority[0].data)
+  token                  = data.aws_eks_cluster_auth.cluster.token
+}
+
+provider "kubectl" {
   host                   = aws_eks_cluster.eks_cluster.endpoint
   cluster_ca_certificate = base64decode(aws_eks_cluster.eks_cluster.certificate_authority[0].data)
   token                  = data.aws_eks_cluster_auth.cluster.token

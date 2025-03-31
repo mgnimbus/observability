@@ -9,8 +9,23 @@ resource "helm_release" "ingress_nginx" {
   values = [file("${path.module}/manifests/nginx/values.yaml")]
 
   set {
-    name  = "service.type"
-    value = "ClusterIP"
+    name  = "controller.service.type"
+    value = "LoadBalancer"
+  }
+
+  set {
+    name  = "controller.service.external.enabled"
+    value = "false"
+  }
+
+  set {
+    name  = "controller.service.internal.enabled"
+    value = "true"
+  }
+
+  set {
+    name  = "controller.service.internal.annotations.service\\.ingress\\.kubernetes\\.io/subnets"
+    value = "{${join(",", var.private_subenets)}}"
   }
 
   set {
@@ -18,44 +33,16 @@ resource "helm_release" "ingress_nginx" {
     value = "1"
   }
 
-  set {
-    name  = "controller.service.annotations.service\\.beta\\.kubernetes\\.io/aws-load-balancer-name"
-    value = "extdns-tls-lbc-network-lb"
-  }
-
-  set {
-    name  = "controller.service.annotations.service\\.beta\\.kubernetes\\.io/aws-load-balancer-type"
-    value = "external"
-  }
-
-  set {
-    name  = "controller.service.annotations.service\\.beta\\.kubernetes\\.io/load-balancer-source-ranges"
-    value = "0.0.0.0/0"
-  }
-
-  set {
-    name  = "controller.service.annotations.service\\.beta\\.kubernetes\\.io/aws-load-balancer-scheme"
-    value = "internet-facing"
-  }
-
-  set {
-    name  = "controller.service.annotations.service\\.beta\\.kubernetes\\.io/aws-load-balancer-ssl-cert"
-    value = "arn:aws:acm:us-east-1:058264194719:certificate/442d0a9c-5bb3-43ba-8ad2-27e53a40f0f6"
-  }
-
-  set {
-    name  = "controller.service.annotations.service\\.beta\\.kubernetes\\.io/aws-load-balancer-ssl-ports"
-    value = "443"
-  }
-
-  set {
-    name  = "controller.service.annotations.service\\.beta\\.kubernetes\\.io/aws-load-balancer-ssl-negotiation-policy"
-    value = "ELBSecurityPolicy-TLS13-1-2-2021-06"
-  }
-
-  set {
-    name  = "controller.service.annotations.service\\.beta\\.kubernetes\\.io/aws-load-balancer-backend-protocol"
-    value = "tcp"
-  }
-  depends_on = [helm_release.aws_lb_controller, aws_eks_node_group.eks_ng_private]
+  depends_on = [helm_release.aws_lb_controller, aws_eks_node_group.eks_ng_private, kubectl_manifest.cert]
 }
+
+
+resource "kubectl_manifest" "cert" {
+  yaml_body = file("${path.module}/manifests/nginx/certificate.yaml")
+}
+
+/*
+aws ec2 create-tags --resources subnet-0697eef5bb5cb87cd subnet-0352fb45785fd0454 \                     ☁️  󱃾 nimbus 
+    --tags Key=kubernetes.io/role/internal-elb,Value=1
+aws ec2 describe-subnets --filters "Name=tag-key,Values=kubernetes.io/role/internal-elb"     
+*/

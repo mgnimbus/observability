@@ -2,45 +2,45 @@
 # VPC Output Values
 
 # VPC ID
-output "vpc_id" {
-  description = "The ID of the VPC"
-  value       = module.vpc.vpc_id
-}
+# output "vpc_id" {
+#   description = "The ID of the VPC"
+#   value       = module.vpc.vpc_id
+# }
 
-# VPC CIDR blocks
-output "vpc_cidr_block" {
-  description = "The CIDR block of the VPC"
-  value       = module.vpc.vpc_cidr_block
-}
+# # VPC CIDR blocks
+# output "vpc_cidr_block" {
+#   description = "The CIDR block of the VPC"
+#   value       = module.vpc.vpc_cidr_block
+# }
 
-# VPC Private Subnets
-output "private_subnets" {
-  description = "List of IDs of private subnets"
-  value       = module.vpc.private_subnets
-}
+# # VPC Private Subnets
+# output "private_subnets" {
+#   description = "List of IDs of private subnets"
+#   value       = module.vpc.private_subnets
+# }
 
-# VPC Public Subnets
-output "public_subnets" {
-  description = "List of IDs of public subnets"
-  value       = module.vpc.public_subnets
-}
+# # VPC Public Subnets
+# output "public_subnets" {
+#   description = "List of IDs of public subnets"
+#   value       = module.vpc.public_subnets
+# }
 
-output "database_subnets" {
-  description = "List of IDs of database subnets"
-  value       = module.vpc.database_subnets
-}
+# output "database_subnets" {
+#   description = "List of IDs of database subnets"
+#   value       = module.vpc.database_subnets
+# }
 
-# VPC NAT gateway Public IP
-output "nat_public_ips" {
-  description = "List of public Elastic IPs created for AWS NAT Gateway"
-  value       = module.vpc.nat_public_ips
-}
+# # VPC NAT gateway Public IP
+# output "nat_public_ips" {
+#   description = "List of public Elastic IPs created for AWS NAT Gateway"
+#   value       = module.vpc.nat_public_ips
+# }
 
-# VPC AZs
-output "azs" {
-  description = "A list of availability zones spefified as argument to this module"
-  value       = module.vpc.azs
-}
+# # VPC AZs
+# output "azs" {
+#   description = "A list of availability zones spefified as argument to this module"
+#   value       = module.vpc.azs
+# }
 
 # Output: AWS IAM Open ID Connect Provider ARN
 output "aws_iam_openid_connect_provider_arn" {
@@ -58,16 +58,16 @@ output "aws_iam_openid_connect_provider_extract_from_arn" {
 # Public EC2 Instances - Bastion Host
 
 ## ec2_bastion_public_instance_ids
-output "ec2_bastion_public_instance_ids" {
-  description = "List of IDs of instances"
-  value       = module.ec2_public.id
-}
+# output "ec2_bastion_public_instance_ids" {
+#   description = "List of IDs of instances"
+#   value       = module.ec2_public.id
+# }
 
-## ec2_bastion_public_ip
-output "ec2_bastion_public_ip" {
-  description = "Elastic IP associated to the Bastion Host"
-  value       = try(aws_eip.bastion_eip[0].public_ip, "")
-}
+# ## ec2_bastion_public_ip
+# output "ec2_bastion_public_ip" {
+#   description = "Elastic IP associated to the Bastion Host"
+#   value       = try(aws_eip.bastion_eip[0].public_ip, "")
+# }
 
 # EKS Cluster Outputs
 output "cluster_id" {

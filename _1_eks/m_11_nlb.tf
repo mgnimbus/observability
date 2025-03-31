@@ -7,7 +7,7 @@ resource "helm_release" "aws_lb_controller" {
 
   values = [templatefile("${path.module}/manifests/lbc/values.yaml", {
     role_arn             = aws_iam_role.irsa_lbc_role.arn
-    vpc_id               = module.vpc.vpc_id
+    vpc_id               = var.vpc_id
     region               = var.aws_region
     eks_cluster          = aws_eks_cluster.eks_cluster.id
     service_account_name = var.lbc_service_account_name
