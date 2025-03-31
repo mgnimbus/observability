@@ -4,9 +4,8 @@ resource "helm_release" "cert_manager" {
   chart            = "cert-manager"
   namespace        = "cert-manager"
   create_namespace = true
-  values = [
-    file("${path.module}/manifests/values.yaml")
-  ]
+  set {
+    name  = "installCRDs"
+    value = "true"
+  }
 }
-
-# helm repo add jetstack https://charts.jetstack.io

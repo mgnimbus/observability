@@ -63,18 +63,3 @@ resource "aws_iam_role_policy_attachment" "EKSAmazoncaRole" {
   policy_arn = aws_iam_policy.irsa_ca_policy.arn
   role       = aws_iam_role.irsa_ca_role.name
 }
-
-data "template_file" "service_account_yaml" {
-  template = file("${path.module}/manifests/ca_sa.yml.tpl")
-
-  vars = {
-    irsa_ca_role_arn     = aws_iam_role.irsa_ca_role.arn
-    service_account_name = var.service_account_name
-    namespace            = var.namespace
-  }
-}
-
-resource "local_file" "rendered_service_account_yaml" {
-  content  = data.template_file.service_account_yaml.rendered
-  filename = "${path.module}/manifests/ca_sa.yml"
-}

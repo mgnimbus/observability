@@ -1,0 +1,269 @@
+global:
+  imagePullSecrets:
+    - regcred
+
+serviceAccount:
+  create: true
+  name: ${role_name}
+  annotations:
+    eks.amazonaws.com/role-arn: ${role_arn}
+  automountServiceAccountToken: true
+
+assertNoLeakedSecrets: false
+  
+admin:
+  adminUser: ${username}
+  adminPassword: "${password}"
+
+replicas: 1
+
+# autoscaling:
+#   enabled: false
+#   minReplicas: 2
+#   maxReplicas: 5
+#   targetCPU: "60"
+#   targetMemory: "80"
+#   behavior: {}
+
+# podDisruptionBudget:
+#   maxUnavailable: 1
+
+readinessProbe:
+  httpGet:
+    path: /api/health
+    port: 3000
+
+livenessProbe:
+  httpGet:
+    path: /api/health
+    port: 3000
+  initialDelaySeconds: 60
+  timeoutSeconds: 30
+  failureThreshold: 10
+
+# Enable creating the grafana configmap
+createConfigmap: true
+
+# Extra configmaps to mount in grafana pods
+# Values are templated.
+extraConfigmapMounts:
+  - name: certs-configmap
+    mountPath: /tmp/certs/
+    configMap: merck-root-ca
+    readOnly: true
+
+
+service:
+  enabled: true
+  annotations: {}
+
+serviceMonitor:
+  enabled: true
+
+ingress:
+  enabled: true
+  annotations:
+    kubernetes.io/ingress.class: nginx
+    kubernetes.io/tls-acme: "true"
+    cert-manager.io/issuer: awscpaissuer
+    cert-manager.io/issuer-kind: AWSPCAClusterIssuer
+    cert-manager.io/issuer-group: awspca.cert-manager.io
+    cert-manager.io/usages: "server auth, client auth"
+    cert-manager.io/common-name: ${vanity_name}
+  hosts:
+    - ${vanity_name}
+  tls:
+    - secretName: grafana-tls
+      hosts:
+        - ${vanity_name}
+
+# smtp:
+#   existingSecret: ""
+#   userKey: "user"
+#   passwordKey: "password"
+
+persistence:
+  enabled: false
+
+initChownData:
+  enabled: true
+
+securityContext:
+  runAsNonRoot: false
+  runAsUser: 0
+  runAsGroup: 0
+  fsGroup: 0
+
+lifecycleHooks:
+  postStart:
+    exec:
+      command:
+        [
+          "sh",
+          "-c",
+          "/bin/cat /tmp/certs/merck_trusted_root_ca.crt >> /etc/ssl/certs/ca-certificates.crt",
+        ]
+command:
+  - "sh"
+  - "-c"
+  - "grafana cli --config /etc/grafana/grafana.ini admin reset-admin-password ${password} && /run.sh"
+plugins:
+  - grafana-athena-datasource
+  - grafana-clock-panel
+  - moogsoft-aiops-app
+  - yesoreyeram-infinity-datasource
+  - serrrios-statusoverview-panel
+  - grafana-oncall-app
+  - marcusolsson-dynamictext-panel
+  - grafana-opensearch-datasource
+
+datasources:
+  datasources.yaml:
+    apiVersion: 1
+    datasources:
+      - name: mimir
+        type: prometheus
+        url: ${mimir_url}
+        access: proxy
+        isDefault: true
+        editable: false
+        jsonData:
+          prometheusType: Mimir
+          cacheLevel: Medium
+          manageAlerts: true
+      - name: loki
+        type: loki
+        url: ${loki_url}
+        #  access: proxy
+        #  uid: cloudwatch
+        editable: false
+      - name: tempo
+        type: tempo
+        url: ${tempo_url}
+        #  access: proxy
+        #  uid: cloudwatch
+        editable: true
+        jsonData:
+          tracesToLogsV2:
+            # Field with an internal link pointing to a logs data source in Grafana.
+            # datasourceUid value must match the uid value of the logs data source.
+            datasourceUid: 'loki'
+            spanStartTimeShift: '1h'
+            spanEndTimeShift: '-1h'
+            tags: ['job', 'instance', 'pod', 'namespace']
+            filterByTraceID: false
+            filterBySpanID: false
+            customQuery: true
+            query: 'method="$${__span.tags.method}"'
+          tracesToMetrics:
+            datasourceUid: 'prom'
+            spanStartTimeShift: '1h'
+            spanEndTimeShift: '-1h'
+            tags: [{ key: 'service.name', value: 'service' }, { key: 'job' }]
+            queries:
+              - name: 'Sample query'
+                query: 'sum(rate(traces_spanmetrics_latency_bucket{$$__tags}[5m]))'
+          serviceMap:
+            datasourceUid: 'mimir'
+          nodeGraph:
+            enabled: true
+          search:
+            hide: false
+          lokiSearch:
+            datasourceUid: 'loki'
+          traceQuery:
+            timeShiftEnabled: true
+            spanStartTimeShift: '1h'
+            spanEndTimeShift: '-1h'
+          spanBar:
+            type: 'Tag'
+            tag: 'http.path'
+grafana.ini:
+  paths:
+    data: /var/lib/grafana/
+    logs: /var/log/grafana
+    plugins: /var/lib/grafana/plugins
+    provisioning: /etc/grafana/provisioning
+  smtp:
+    enabled: true
+    host: mailhost.merck.com:25
+    from_address: noreply@${vanity_name}
+    from_name: ARGUS Observability Platform
+  analytics:
+    check_for_updates: false
+    reporting_enabled: false
+  log:
+    mode: console
+    level: warn
+  server:
+    domain: ${vanity_name}
+    root_url: https://${vanity_name}
+  database:
+    user: ${rds_username}
+    password: '${rds_password}'
+    name: grafana
+    type: postgres
+    host: ${rds_host}
+    ssl_mode: require
+  allow_embedding: true
+  cookie_samesite: none
+  plugins:
+    allow_loading_unsigned_plugins: 
+      - grafana-athena-datasource
+      - moogsoft-aiops-app
+  feature_toggles:
+    enable: traceToMetrics
+  smtp:
+    enabled: true
+    host: smtp-msdcloud.merck.com:25
+    from_address: no-reply@merck.com
+    from_name: ARGUS
+  auth:
+    login_maximum_lifetime_duration: 1d
+    login_maximum_inactive_lifetime_duration: 6h
+  auth.azuread:
+    name: Azure AD
+    enabled: true
+    allow_sign_up: true
+    auto_login: false
+    client_id: ${application_id}
+    client_secret: ${secret_key}
+    scopes: openid email profile
+    auth_url: https://login.microsoftonline.com/${tenant_id}/oauth2/v2.0/authorize
+    token_url: https://login.microsoftonline.com/${tenant_id}/oauth2/v2.0/token
+    allowed_domains:
+    allowed_groups:
+    allowed_organizations: ${tenant_id}
+    role_attribute_strict: false
+    allow_assign_grafana_admin: true
+    skip_org_role_sync: true
+    use_pkce: true
+  auth.basic:
+    enabled: true
+  panels:
+    disable_sanitize_html: true 
+
+extraVolumeMounts:
+  - name: aws-secrets
+    mountPath: "/mnt/secrets-store"
+    readOnly: true
+
+extraVolumes:
+  - name: aws-secrets
+    csi:
+      driver: secrets-store.csi.k8s.io
+      readOnly: true
+      volumeAttributes:
+        secretProviderClass: "aws-grafana-secret"
+
+sidecar:
+  dashboards:
+    enabled: true
+  datasources:
+    enabled: true
+  plugins:
+    enabled: true
+  notifiers:
+    enabled: true
+imageRenderer:
+  enabled: false

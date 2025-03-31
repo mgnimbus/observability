@@ -1,0 +1,412 @@
+apiVersion: opentelemetry.io/v1alpha1
+
+kind: OpenTelemetryCollector
+
+metadata:
+  name: ${collector_id}
+
+  namespace: ${namespace}
+
+spec:
+  mode: daemonset
+
+  image: dockerhub-remote.dock.merck.com/otel/opentelemetry-collector-contrib:0.115.1
+
+  serviceAccount: ${service_account}
+
+  targetAllocator:
+    enabled: true
+
+    image: ghcr-remote.dock.merck.com/open-telemetry/opentelemetry-operator/target-allocator:0.120.0
+
+    replicas: 1
+
+    allocationStrategy: per-node
+
+    serviceAccount: ${service_account}
+
+  volumeMounts:
+    - name: merck-trusted-ca
+
+      mountPath: /etc/ssl/certs
+
+      readOnly: true
+
+  volumes:
+    - configMap:
+        name: merck-trusted-ca
+
+      name: merck-trusted-ca
+
+  resources:
+    requests:
+      cpu: 50m
+
+      memory: 500Mi
+
+    limits:
+      cpu: 1
+
+      memory: 5Gi
+
+  env:
+    - name: GOMEMLIMIT
+
+      value: "4250MiB"
+
+    - name: "K8S_NODE_NAME"
+
+      valueFrom:
+        fieldRef:
+          fieldPath: "spec.nodeName"
+
+    - name: "K8S_POD_NAME"
+
+      valueFrom:
+        fieldRef:
+          fieldPath: "metadata.name"
+
+    - name: "K8S_NAMESPACE"
+
+      valueFrom:
+        fieldRef:
+          fieldPath: "metadata.namespace"
+
+  tolerations:
+    - effect: NoSchedule
+
+      operator: Exists
+
+  config: |
+
+    receivers:
+
+      prometheus:
+
+        config:
+
+          global:
+
+            scrape_interval: 30s
+
+            scrape_timeout: 10s
+
+          scrape_configs:
+
+          - job_name: kubernetes-nodes
+
+            bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+
+            kubernetes_sd_configs:
+
+            - role: node
+
+            relabel_configs:
+
+            - action: labelmap
+
+              regex: __meta_kubernetes_node_label_(.+)
+
+            - replacement: kubernetes.default.svc:443
+
+              target_label: __address__
+
+            - regex: (.+)
+
+              replacement: /api/v1/nodes/$$1/proxy/metrics
+
+              source_labels:
+
+              - __meta_kubernetes_node_name
+
+              target_label: __metrics_path__
+
+            scheme: https
+
+            tls_config:
+
+              ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+
+              insecure_skip_verify: true
+
+          - job_name: kubernetes-nodes-cadvisor
+
+            bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+
+            kubernetes_sd_configs:
+
+            - role: node
+
+            relabel_configs:
+
+            - action: labelmap
+
+              regex: __meta_kubernetes_node_label_(.+)
+
+            - replacement: kubernetes.default.svc:443
+
+              target_label: __address__
+
+            - regex: (.+)
+
+              replacement: /api/v1/nodes/$$1/proxy/metrics/cadvisor
+
+              source_labels:
+
+              - __meta_kubernetes_node_name
+
+              target_label: __metrics_path__
+
+            - action: replace
+
+              source_labels:
+
+              - __meta_kubernetes_node_name
+
+              target_label: node
+
+            - action: replace
+
+              source_labels:
+
+              - __meta_kubernetes_namespace
+
+              target_label: namespace
+
+            scheme: https
+
+            tls_config:
+
+              ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+
+              insecure_skip_verify: true
+
+          - job_name: kubernetes-service-endpoints
+
+            kubernetes_sd_configs:
+
+            - role: endpoints
+
+            relabel_configs:
+
+            - action: keep
+
+              regex: true
+
+              source_labels:
+
+              - __meta_kubernetes_service_annotation_prometheus_io_scrape
+
+            - action: replace
+
+              regex: (https?)
+
+              source_labels:
+
+              - __meta_kubernetes_service_annotation_prometheus_io_scheme
+
+              target_label: __scheme__
+
+            - action: replace
+
+              regex: (.+)
+
+              source_labels:
+
+              - __meta_kubernetes_service_annotation_prometheus_io_path
+
+              target_label: __metrics_path__
+
+            - action: replace
+
+              regex: ([^:]+)(?::\d+)?;(\d+)
+
+              replacement: $$1:$$2
+
+              source_labels:
+
+              - __address__
+
+              - __meta_kubernetes_service_annotation_prometheus_io_port
+
+              target_label: __address__
+
+            - action: labelmap
+
+              regex: __meta_kubernetes_service_annotation_prometheus_io_param_(.+)
+
+              replacement: __param_$$1
+
+            - action: labelmap
+
+              regex: __meta_kubernetes_service_label_(.+)
+
+            - action: replace
+
+              source_labels:
+
+              - __meta_kubernetes_namespace
+
+              target_label: namespace
+
+            - action: replace
+
+              source_labels:
+
+              - __meta_kubernetes_service_name
+
+              target_label: pod
+
+            - action: replace
+
+              source_labels:
+
+              - __meta_kubernetes_pod_node_name
+
+              target_label: node
+
+            - action: replace
+
+              source_labels:
+
+              - exported_pod
+
+              target_label: pod
+
+            - action: replace
+
+              source_labels:
+
+              - exported_node
+
+              target_label: node
+
+            - action: replace
+
+              source_labels:
+
+              - exported_namespace
+
+              target_label: namespace
+
+    extensions:
+
+      headers_setter:
+
+        headers:
+
+          - action: upsert
+
+            key: X-Scope-OrgId
+
+            from_context: X-Scope-OrgId
+
+    processors:
+
+      batch:
+
+        send_batch_max_size: 1000
+
+        timeout: 1s
+
+        send_batch_size: 1000
+
+      memory_limiter:
+
+        limit_mib: 4200
+
+        spike_limit_mib: 1000
+
+        check_interval: 1s
+
+      attributes:
+
+        actions:
+
+          - key: k8s_cluster_id
+
+            value: ${eks_cluster}
+
+            action: insert
+
+          - key: otel_collector_id
+
+            action: insert
+
+            value: ${collector_id}
+
+          - key: argus.app.id
+
+            action: insert
+
+            value: ${argus_app_id}
+
+          - key: argus.app.env
+
+            action: insert
+
+            value: ${argus_app_env}
+
+          - key: argus.product.id
+
+            action: insert
+
+            value: ${argus_product_id}
+
+          - key: argus.app.service
+
+            action: insert
+
+            value: ${argus_app_service}
+
+          
+
+      metricstransform:
+
+        transforms:
+
+          - include: ^exported_(.*)$$
+
+            match_type: regexp
+
+            action: update
+
+            new_name: $$${1}
+
+    exporters:
+
+      otlp:
+
+        endpoint: "https://otel.${argus_domain_name}:443"
+
+        headers:
+
+          X-Scope-OrgId: ${app_ci_shortname}
+
+        compression: snappy
+
+    service:
+
+      extensions: [headers_setter]
+
+      telemetry:
+
+        metrics:
+
+          address: 0.0.0.0:8888
+
+          level: detailed
+
+        logs:
+
+          level: warn
+
+      pipelines:
+
+        metrics:
+
+          receivers: [prometheus]
+
+          processors: [memory_limiter, attributes, metricstransform, batch]
+
+          exporters: [otlp]

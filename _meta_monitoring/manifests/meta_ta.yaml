@@ -1,0 +1,198 @@
+apiVersion: opentelemetry.io/v1alpha1
+kind: OpenTelemetryCollector
+metadata:
+  name: ${collector_id}
+  namespace: ${namespace}
+spec:
+  mode: statefulset
+  image: otel/opentelemetry-collector-contrib
+  targetAllocator:
+    enabled: true
+    image: ghcr.io/open-telemetry/opentelemetry-operator/target-allocator
+    replicas: 1
+    prometheusCR:
+      enabled: true
+    serviceAccount: ${service_account}
+  serviceAccount: ${service_account}
+  resources:
+    requests:
+      cpu: 100m
+      memory: 750Mi
+    limits:
+      cpu: 1
+      memory: 5Gi
+  autoscaler:
+    minReplicas: 1
+    maxReplicas: 10
+    targetCPUUtilization: 70
+    targetMemoryUtilization: 70
+  env:
+    - name: "K8S_NODE_NAME"
+      valueFrom:
+        fieldRef:
+          fieldPath: "spec.nodeName"
+    - name: "K8S_POD_NAME"
+      valueFrom:
+        fieldRef:
+          fieldPath: "metadata.name"
+    - name: "K8S_NAMESPACE"
+      valueFrom:
+        fieldRef:
+          fieldPath: "metadata.namespace"
+  config: |
+    receivers:
+      prometheus:
+        config:
+          global:
+            scrape_interval: 30s
+            scrape_timeout: 10s
+          scrape_configs:
+          - job_name: kubernetes-apiservers
+            bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+            kubernetes_sd_configs:
+            - role: endpoints
+            relabel_configs:
+            - action: keep
+              regex: default;kubernetes;https
+              source_labels:
+              - __meta_kubernetes_namespace
+              - __meta_kubernetes_service_name
+              - __meta_kubernetes_endpoint_port_name
+            scheme: https
+            tls_config:
+              ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+          - job_name: kubernetes-services
+            kubernetes_sd_configs:
+            - role: service
+            metrics_path: /probe
+            params:
+              module:
+              - http_2xx
+            relabel_configs:
+            - action: keep
+              regex: true
+              source_labels:
+              - __meta_kubernetes_service_annotation_prometheus_io_probe
+            - source_labels:
+              - __address__
+              target_label: __param_target
+            - replacement: blackbox
+              target_label: __address__
+            - source_labels:
+              - __param_target
+              target_label: instance
+            - action: labelmap
+              regex: __meta_kubernetes_service_label_(.+)
+            - source_labels:
+              - __meta_kubernetes_namespace
+              target_label: kubernetes_namespace
+            - source_labels:
+              - __meta_kubernetes_service_name
+              target_label: kubernetes_name
+          - job_name: kubernetes-pods
+            kubernetes_sd_configs:
+            - role: pod
+              selectors:
+                - role: pod
+            relabel_configs:
+            - action: keep
+              regex: true
+              source_labels:
+              - __meta_kubernetes_pod_annotation_prometheus_io_scrape
+            - action: replace
+              regex: (https?)
+              source_labels:
+              - __meta_kubernetes_pod_annotation_prometheus_io_scheme
+              target_label: __scheme__
+            - action: replace
+              regex: (.+)
+              source_labels:
+              - __meta_kubernetes_pod_annotation_prometheus_io_path
+              target_label: __metrics_path__
+            - action: replace
+              regex: ([^:]+)(?::\d+)?;(\d+)
+              replacement: $$1:$$2
+              source_labels:
+              - __address__
+              - __meta_kubernetes_pod_annotation_prometheus_io_port
+              target_label: __address__
+            - action: labelmap
+              regex: __meta_kubernetes_pod_annotation_prometheus_io_param_(.+)
+              replacement: __param_$$1
+            - action: labelmap
+              regex: __meta_kubernetes_pod_label_(.+)
+            - action: replace
+              source_labels:
+              - __meta_kubernetes_namespace
+              target_label: namespace
+            - action: replace
+              source_labels:
+              - __meta_kubernetes_pod_name
+              target_label: pod
+            - action: drop
+              regex: Pending|Succeeded|Failed|Completed
+              source_labels:
+              - __meta_kubernetes_pod_phase
+          - job_name: prometheus-pushgateway
+            honor_labels: true
+            kubernetes_sd_configs:
+            - role: service
+            relabel_configs:
+            - action: keep
+              regex: pushgateway
+              source_labels:
+              - __meta_kubernetes_service_annotation_prometheus_io_probe
+
+    extensions:
+      sigv4auth:
+        region: "us-east-1"
+        service: "aps"
+      headers_setter:
+        headers:
+          - action: upsert
+            key: X-Scope-OrgId
+            from_context: X-Scope-OrgId
+
+    processors:
+      batch/metrics:
+        send_batch_max_size: 1000
+        timeout: 1s
+        send_batch_size: 1000
+      attributes:
+        actions:
+          - key: k8s_cluster_id
+            value: ${eks_cluster}
+            action: insert
+          - key: otel_collector_id
+            action: insert
+            value: ${collector_id}
+
+      metricstransform:
+        transforms:
+          - include: ^exported_(.*)$$
+            match_type: regexp
+            action: update
+            new_name: $$${1}
+    exporters:
+      otlp:
+        endpoint: "https://otel.varidha.com:443"
+        headers:
+          X-Scope-OrgId: obsrv
+        tls:
+          insecure_skip_verify: true 
+          insecure: true
+
+        compression: snappy
+    service:
+      extensions: [headers_setter]
+      telemetry:
+        metrics:
+          address: 0.0.0.0:8888
+          level: detailed
+        logs:
+          level: warn
+      pipelines:
+        metrics:
+          receivers: [prometheus]
+          processors: [attributes,metricstransform, batch/metrics]
+          exporters: [otlp]

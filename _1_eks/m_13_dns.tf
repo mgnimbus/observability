@@ -1,18 +1,37 @@
+resource "kubernetes_namespace" "external_dns" {
+  metadata {
+    name = var.dns_namespace
+  }
+}
+
+resource "kubernetes_service_account" "external_dns" {
+  metadata {
+    name      = var.dns_service_account_name
+    namespace = kubernetes_namespace.external_dns.metadata[0].name
+    annotations = {
+      "eks.amazonaws.com/role-arn"     = aws_iam_role.irsa_r53_role.arn,
+      "meta.helm.sh/release-namespace" = kubernetes_namespace.external_dns.metadata[0].name
+      "meta.helm.sh/release-name"      = "external-dns"
+    }
+    labels = {
+      "app.kubernetes.io/managed-by" = "Helm"
+    }
+  }
+}
 resource "helm_release" "external_dns" {
   name = "external-dns"
 
   repository       = "https://kubernetes-sigs.github.io/external-dns/"
   chart            = "external-dns"
-  create_namespace = true
-  namespace        = var.dns_namespace
+  create_namespace = false
+  namespace        = kubernetes_namespace.external_dns.metadata[0].name
 
   values = [
     templatefile("${path.module}/manifests/dns/dns.yaml", {
-      sa_name  = var.dns_service_account_name
-      role_arn = aws_iam_role.irsa_r53_role.arn
+      region = var.aws_region
       }
   )]
-  depends_on = [aws_eks_cluster.eks_cluster, aws_eks_node_group.eks_ng_private]
+  depends_on = [aws_eks_cluster.eks_cluster, aws_eks_node_group.eks_ng_private, kubernetes_service_account.external_dns]
 }
 
 # k create ns external-dns
