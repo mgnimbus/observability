@@ -1,173 +1,422 @@
 # Default values for opentelemetry-collector.
+
 # This is a YAML-formatted file.
+
 # Declare variables to be passed into your templates.
 
+
+
 # nameOverride: "cop-otel-gw"
+
 fullnameOverride: ""
 
+
+
 # Valid values are "daemonset", "deployment", and "statefulset".
+
 mode: "deployment"
+
 replicaCount: 1
 
+
+
 # Specify which namespace should be used to deploy the resources into
+
 namespaceOverride: ""
 
+
+
 presets:
+
   logsCollection:
+
     enabled: false
+
   hostMetrics:
+
     enabled: false
+
   kubernetesAttributes:
+
     enabled: false
+
   kubeletMetrics:
+
     enabled: false
+
   kubernetesEvents:
+
     enabled: false
+
   clusterMetrics:
+
     enabled: false
+
 configMap:
+
   create: true
 
+
+
 config:
+
   extensions:
+
     health_check: {}
+
     headers_setter:
+
       headers:
+
         - action: upsert
+
           key: X-Scope-OrgId
+
           from_context: X-Scope-OrgId
+
   receivers:
+
     otlp:
+
       protocols:
+
         grpc:
+
           endpoint: 0.0.0.0:4317
+
           max_recv_msg_size_mib: 250
+
           include_metadata: true
 
+
+
   processors:
+
     batch:
+
       send_batch_max_size: 0
+
       timeout: 200ms
+
       send_batch_size: 8192
+
       metadata_keys:
+
         - X-Scope-OrgId
+
       metadata_cardinality_limit: 30
+
     resource:
+
       attributes:
+
         - action: insert
+
           key: gateway
+
           value: argus-otel-gateway
 
+
+
     attributes:
+
       actions:
+
         - key: X-Scope-OrgId
+
           from_context: X-Scope-OrgId
+
           action: upsert
 
 
   exporters:
-    # otlp:
-    #   endpoint: "${tempo_endpoint}"
-    #   tls:
-    #     insecure: true
-    #   auth:
-    #     authenticator: headers_setter
-    prometheusremotewrite:
-      endpoint: "${mimir_endpoint}"
+
+    otlp:
+
+      endpoint: "${tempo_endpoint}"
+
       tls:
+
         insecure: true
-      resource_to_telemetry_conversion:
-        enabled: true # Convert resource attributes to metric labels
-      add_metric_suffixes: true
+
       auth:
+
         authenticator: headers_setter
-    otlphttp/loki:
-      endpoint: "${loki_endpoint}"
+
+    prometheusremotewrite:
+
+      endpoint: "${mimir_endpoint}"
+
       tls:
-        insecure: false
+
+        insecure: true
+
+      resource_to_telemetry_conversion:
+
+        enabled: true # Convert resource attributes to metric labels
+
+      add_metric_suffixes: true
+
       auth:
+
         authenticator: headers_setter
+
+    loki:
+
+      endpoint: "${loki_endpoint}"
+
+      tls:
+
+        insecure: true
+
+      default_labels_enabled:
+
+        exporters: false
+
+        jobs: true
+
+      auth:
+
+        authenticator: headers_setter
+
+
 
   service:
+
     extensions: [health_check, headers_setter]
+
     telemetry:
+
       metrics:
+
         address: 0.0.0.0:8888
+
         level: detailed
+
     pipelines:
+
       metrics:
+
         receivers: [otlp]
+
         processors: [batch, resource, attributes]
+
         exporters: [prometheusremotewrite]
-      # traces:
-      #   receivers: [otlp]
-      #   processors: [batch, resource, attributes]
-      #   exporters: [otlp]
-      logs:
+
+      traces:
+
         receivers: [otlp]
+
         processors: [batch, resource, attributes]
-        exporters: [otlphttp/loki]
+
+        exporters: [otlp]
+
+      logs:
+
+        receivers: [otlp]
+
+        processors: [batch, resource, attributes]
+
+        exporters: [loki]
+
+
 
 image:
+
+  # If you want to use the core image otel/opentelemetry-collector, you also need to change command.name value to otelcol.
+
   repository: otel/opentelemetry-collector-contrib
+
   pullPolicy: IfNotPresent
+
+  # Overrides the image tag whose default is the chart appVersion.
+
   tag: ""
+
+  # When digest is set to a non-empty value, images will be pulled by digest (regardless of tag value).
+
   digest: ""
+
 imagePullSecrets: []
 
+
+
+# OpenTelemetry Collector executable
+
 command:
+
   name: otelcol-contrib
+
   extraArgs: []
 
+#   extraArgs:
+
+#     - --feature-gates=pkg.translator.prometheus.NormalizeName
+
+
+
 clusterRole:
+
   rules:
+
     - apiGroups: [""]
+
       resources:
+
         [
+
           "pods",
+
           "namespaces",
+
           "nodes",
+
           "resourcequotas",
+
           "replicationcontrollers",
+
           "services",
+
           "nodes/metrics",
+
           "nodes/stats",
+
           "nodes/proxy",
+
           "events",
+
         ]
+
       verbs: ["get", "watch", "list"]
+
     - apiGroups: ["apps"]
+
       resources: ["replicasets", "daemonsets", "deployments", "statefulsets"]
+
       verbs: ["get", "list", "watch"]
 
+    - apiGroups: ["extensions"]
+
+      resources: ["replicasets"]
+
+      verbs: ["get", "list", "watch"]
+
+    - apiGroups: ["batch"]
+
+      resources: ["cronjobs", "jobs"]
+
+      verbs: ["get", "list", "watch"]
+
+    - apiGroups: ["autoscaling"]
+
+      resources: ["horizontalpodautoscalers"]
+
+      verbs: ["get", "list", "watch"]
+
+
+
 ports:
+
   otlp:
+
     enabled: true
+
     containerPort: 4317
+
     servicePort: 4317
+
     hostPort: 4317
+
     protocol: TCP
+
     appProtocol: grpc
+
+  otlp-http:
+
+    enabled: false
+
+  jaeger-compact:
+
+    enabled: false
+
+  jaeger-thrift:
+
+    enabled: false
+
+  jaeger-grpc:
+
+    enabled: false
+
+  zipkin:
+
+    enabled: false
+
   metrics:
+
+    # The metrics port is disabled by default. However you need to enable the port
+
+    # in order to use the ServiceMonitor (serviceMonitor.enabled) or PodMonitor (podMonitor.enabled).
+
     enabled: true
+
     containerPort: 8888
+
     servicePort: 8888
+
     protocol: TCP
+
+  # Resource limits & requests. Update according to your own use case as these values might be too low for a typical deployment.
+
+  # resources: {}
 
 autoscaling:
+
   enabled: true
+
+  # enabled: true
+
   minReplicas: 1
+
   maxReplicas: 3
+
   behavior:
+
     minAvailable: 1
+
   targetCPUUtilizationPercentage: 60
+
   targetMemoryUtilizationPercentage: 70
 
+
+
 useGOMEMLIMIT: true
+
 resources:
+
   requests:
+
     cpu: 192m
+
     memory: 256Mi
+
   limits:
+
     cpu: 1
+
     memory: 4Gi
+
+# # livenessProbe:
+
+#   httpGet:
+
+#     port: 8888
+
+#     path: /
+
+# readinessProbe:
+
+#   httpGet:
+
+#     port: 8888
+
+#     path: /

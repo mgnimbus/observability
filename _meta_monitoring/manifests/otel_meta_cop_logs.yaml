@@ -229,7 +229,7 @@ config:
     otlp:
       endpoint: "https://otel.varidha.com:443"
       tls:
-        insecure: true
+        insecure: false
       headers:
         X-Scope-OrgId: obsrv
       compression: snappy
