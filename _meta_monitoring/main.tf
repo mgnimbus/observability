@@ -47,7 +47,7 @@ resource "helm_release" "otel_meta_cop_logs" {
   values = [
     "${templatefile("${path.module}/manifests/otel_meta_cop_logs.yaml", {
       collector_id    = "obsrv-logs"
-      eks_cluster     = data.terraform_remote_state.eks.outputs.cluster_id
+      eks_cluster     = data.terraform_remote_state.eks.outputs.cluster_name
       namespace       = kubernetes_namespace.meta_monitoring.metadata[0].name
       service_account = var.service_account_name
     })}"
@@ -58,7 +58,7 @@ resource "helm_release" "otel_meta_cop_logs" {
 resource "kubectl_manifest" "ta" {
   yaml_body = templatefile("${path.module}/manifests/meta_ta.yaml", {
     collector_id    = "obsrv-ta"
-    eks_cluster     = data.terraform_remote_state.eks.outputs.cluster_id
+    eks_cluster     = data.terraform_remote_state.eks.outputs.cluster_name
     namespace       = kubernetes_namespace.meta_monitoring.metadata[0].name
     service_account = var.service_account_name
   })
@@ -68,7 +68,7 @@ resource "kubectl_manifest" "ta" {
 resource "kubectl_manifest" "metrics" {
   yaml_body = templatefile("${path.module}/manifests/meta_metrics.yaml", {
     collector_id    = "obsrv-metrics"
-    eks_cluster     = data.terraform_remote_state.eks.outputs.cluster_id
+    eks_cluster     = data.terraform_remote_state.eks.outputs.cluster_name
     namespace       = kubernetes_namespace.meta_monitoring.metadata[0].name
     service_account = var.service_account_name
   })
