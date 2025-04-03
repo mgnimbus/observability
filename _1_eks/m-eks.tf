@@ -41,7 +41,7 @@ module "eks" {
   vpc_id                                   = module.vpc.vpc_id
   subnet_ids                               = module.vpc.private_subnets
   enable_cluster_creator_admin_permissions = true
-  authentication_mode                      = "API_AND_CONFIG_MAP"
+  authentication_mode                      = "API"
   eks_managed_node_groups = {
     use_custom_launch_template = false
     obsrv = {
