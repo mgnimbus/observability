@@ -43,7 +43,6 @@ module "eks" {
   enable_cluster_creator_admin_permissions = true
   authentication_mode                      = "API"
   eks_managed_node_groups = {
-    use_custom_launch_template = false
     obsrv = {
       ami_type       = "BOTTLEROCKET_x86_64"
       instance_types = ["t3a.large"]
@@ -71,7 +70,8 @@ module "eks" {
       #     EOT
     }
   }
-  tags = local.common_tags
+  tags       = local.common_tags
+  depends_on = [module.vpc]
 }
 
 
