@@ -1,152 +1,92 @@
-# Create AWS EKS Cluster
-resource "aws_eks_cluster" "eks_cluster" {
-  name     = "${local.name}-${var.cluster_name}"
-  role_arn = aws_iam_role.eks_master_role.arn
-  version  = var.cluster_version
+module "eks" {
+  source  = "terraform-aws-modules/eks/aws"
+  version = "~> 20.0"
 
-  vpc_config {
-    subnet_ids              = var.public_subenets
-    endpoint_private_access = var.cluster_endpoint_private_access
-    endpoint_public_access  = var.cluster_endpoint_public_access
-    public_access_cidrs     = var.cluster_endpoint_public_access_cidrs
+  cluster_name    = "${local.name}-${var.cluster_name}"
+  cluster_version = "1.30"
 
+  # EKS Addons
+  cluster_addons = {
+    coredns = {
+      most_recent = true
+    }
+    kube-proxy = {
+      most_recent = true
+    }
+    vpc-cni = {
+      most_recent              = true
+      service_account_role_arn = aws_iam_role.vpc_cni.arn
+    }
+
+    aws-ebs-csi-driver = {
+      service_account_role_arn = module.irsa-ebs-csi.iam_role_arn
+    }
   }
 
-  kubernetes_network_config {
-    service_ipv4_cidr = var.cluster_service_ipv4_cidr
-  }
+  vpc_id                                   = module.vpc.vpc_id
+  subnet_ids                               = module.vpc.private_subnets
+  enable_cluster_creator_admin_permissions = true
+  eks_managed_node_groups = {
+    obsrv = {
+      ami_type       = "BOTTLEROCKET_x86_64"
+      instance_types = ["t3a.large"]
 
-  # Enable EKS Cluster Control Plane Logging
-  #enabled_cluster_log_types = ["api", "audit", "authenticator", "controllerManager", "scheduler"]
+      min_size     = 2
+      max_size     = 3
+      desired_size = 2
 
-  # Ensure that IAM Role permissions are created before and deleted after EKS Cluster handling.
-  # Otherwise, EKS will not be able to properly delete EKS managed EC2 infrastructure such as Security Groups.
-  depends_on = [
-    aws_iam_role_policy_attachment.eks-AmazonEKSClusterPolicy,
-    aws_iam_role_policy_attachment.eks-AmazonEKSVPCResourceController,
-  ]
-  tags = {
-    Name = "observability-test-eks"
+      bootstrap_extra_args = <<-EOT
+        # The admin host container provides SSH access and runs with "superpowers".
+        # It is disabled by default, but can be disabled explicitly.
+        [settings.host-containers.admin]
+        enabled = false
+
+        # The control host container provides out-of-band access via SSM.
+        # It is enabled by default, and can be disabled if you do not expect to use SSM.
+        # This could leave you with no way to access the API and change settings on an existing node!
+        [settings.host-containers.control]
+        enabled = true
+
+        # extra args added
+        [settings.kernel]
+        lockdown = "integrity"
+      EOT
+    }
   }
+  tags = local.common_tags
 }
 
-# module "eks_sg" {
-#   source  = "terraform-aws-modules/security-group/aws"
-#   version = "~> 5.1.0"
 
-#   name                = "${local.name}-eks-sg"
-#   description         = "To open traffic to internet "
-#   vpc_id              = module.vpc.vpc_id
-#   ingress_rules       = ["ssh-tcp"]
-#   ingress_cidr_blocks = ["0.0.0.0/0"]
-#   egress_rules        = ["all-all"]
-#   tags                = local.common_tags
-# }
-
-# Create AWS EKS Node Group - Public
-# resource "aws_eks_node_group" "eks_ng_public" {
-#   cluster_name = aws_eks_cluster.eks_cluster.name
-
-#   node_group_name = "${local.name}-eks-ng-public"
-#   node_role_arn   = aws_iam_role.eks_nodegroup_role.arn
-#   subnet_ids      = module.vpc.public_subnets
-#   #version = var.cluster_version #(Optional: Defaults to EKS Cluster Kubernetes version)    
-
-#   ami_type       = "AL2_x86_64" # BOTTLEROCKET_x86_64
-#   capacity_type  = "ON_DEMAND"
-#   disk_size      = 100
-#   instance_types = ["t3.micro"] # t3a.large 
-
-
-#   # remote_access {
-#   #   ec2_ssh_key               = "eks-terraform-key"
-#   #   source_security_group_ids = [module.eks_workernode_sg.security_group_id]
-
-#   # }
-
-#   scaling_config {
-#     desired_size = 1
-#     min_size     = 1
-#     max_size     = 2
-#   }
-
-#   # Desired max percentage of unavailable worker nodes during node group update.
-#   update_config {
-#     max_unavailable = 1
-#     #max_unavailable_percentage = 50    # ANY ONE TO USE
-#   }
-
-#   # Ensure that IAM Role permissions are created before and deleted after EKS Node Group handling.
-#   # Otherwise, EKS will not be able to properly delete EC2 Instances and Elastic Network Interfaces.
-#   depends_on = [
-#     aws_iam_role_policy_attachment.eks-AmazonEKSWorkerNodePolicy,
-#     aws_iam_role_policy_attachment.eks-AmazonEKS_CNI_Policy,
-#     aws_iam_role_policy_attachment.eks-AmazonEC2ContainerRegistryReadOnly,
-#   ]
-
-#   tags = {
-#     Name = "${local.name}-public-node-group"
-#   }
-# }
-
-# module "eks_workernode_sg" {
-#   source = "terraform-aws-modules/security-group/aws"
-#   #version = "4.5.0"  
-#   version = "4.17.2"
-
-#   name        = "${local.name}-esk-workernode-sg"
-#   description = "Security Group with SSH port open for everybody (IPv4 CIDR), egress ports are all world open"
+# resource "aws_security_group" "remote_access" {
+#   name_prefix = "${local.name}-remote-access"
+#   description = "Allow remote SSH access"
 #   vpc_id      = module.vpc.vpc_id
-#   # Ingress Rules & CIDR Blocks
-#   ingress_rules       = ["all-all"]
-#   ingress_cidr_blocks = ["0.0.0.0/0"]
-#   # Egress Rule - all-all open
-#   egress_rules = ["all-all"]
-#   tags         = local.common_tags
+
+#   ingress {
+#     description = "SSH access"
+#     from_port   = 22
+#     to_port     = 22
+#     protocol    = "tcp"
+#     cidr_blocks = ["10.0.0.0/8"]
+#   }
+
+#   egress {
+#     from_port        = 0
+#     to_port          = 0
+#     protocol         = "-1"
+#     cidr_blocks      = ["0.0.0.0/0"]
+#     ipv6_cidr_blocks = ["::/0"]
+#   }
+
+#   tags = merge(local.common_tags, { Name = "${local.name}-remote" })
 # }
 
+# data "aws_ami" "eks_default_bottlerocket" {
+#   most_recent = true
+#   owners      = ["amazon"]
 
-# Create AWS EKS Node Group - Private
-
-resource "aws_eks_node_group" "eks_ng_private" {
-  cluster_name = aws_eks_cluster.eks_cluster.name
-
-  node_group_name = "${local.name}-eks-ng-private"
-  node_role_arn   = aws_iam_role.eks_nodegroup_role.arn
-  subnet_ids      = var.private_subenets
-  #version = var.cluster_version #(Optional: Defaults to EKS Cluster Kubernetes version)    
-
-  ami_type       = "BOTTLEROCKET_x86_64" # AL2_x86_64
-  capacity_type  = "SPOT"
-  disk_size      = 100
-  instance_types = ["m5a.large"] # t3.medium 
-
-
-  remote_access {
-    ec2_ssh_key = "eks-terraform-key"
-  }
-
-  scaling_config {
-    desired_size = 3
-    min_size     = 3
-    max_size     = 3
-  }
-
-  # Desired max percentage of unavailable worker nodes during node group update.
-  update_config {
-    max_unavailable = 1
-    #max_unavailable_percentage = 50    # ANY ONE TO USE
-  }
-
-  # Ensure that IAM Role permissions are created before and deleted after EKS Node Group handling.
-  # Otherwise, EKS will not be able to properly delete EC2 Instances and Elastic Network Interfaces.
-  depends_on = [
-    aws_iam_role_policy_attachment.eks-AmazonEKSWorkerNodePolicy,
-    aws_iam_role_policy_attachment.eks-AmazonEKS_CNI_Policy,
-    aws_iam_role_policy_attachment.eks-AmazonEC2ContainerRegistryReadOnly,
-  ]
-  tags = {
-    Name = "${local.name}-private-node-group"
-  }
-}
-
+#   filter {
+#     name   = "name"
+#     values = ["bottlerocket-aws-k8s-${var.cluster_version}-x86_64-*"]
+#   }
+# }

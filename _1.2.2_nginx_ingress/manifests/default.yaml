@@ -1,0 +1,281 @@
+global:
+  image:
+    registry: registry.k8s.io
+
+controller:
+  name: controller
+  enableAnnotationValidations: true
+  image:
+    chroot: false
+    image: ingress-nginx/controller
+    tag: "v1.12.1"
+    digest: sha256:d2fbc4ec70d8aa2050dd91a91506e998765e86c96f32cffb56c503c9c34eed5b
+    digestChroot: sha256:90155c86548e0bb95b3abf1971cd687d8f5d43f340cfca0ad3484e2b8351096e
+    pullPolicy: IfNotPresent
+    runAsNonRoot: true
+    runAsUser: 101
+    runAsGroup: 82
+    allowPrivilegeEscalation: false
+    seccompProfile:
+      type: RuntimeDefault
+    readOnlyRootFilesystem: false
+  containerName: controller
+  # -- Configures the ports that the nginx-controller listens on
+  containerPort:
+    http: 80
+    https: 443
+  dnsPolicy: ClusterFirst
+  reportNodeInternalIp: false
+  watchIngressWithoutClass: false
+  ingressClassByName: false
+  enableTopologyAwareRouting: false
+  disableLeaderElection: false
+  electionTTL: ""
+  allowSnippetAnnotations: false
+  hostNetwork: false
+  hostPort:
+    enabled: false
+    ports:
+      http: 80
+      https: 443
+  networkPolicy:
+    enabled: false
+  electionID: ""
+  ingressClassResource:
+    name: nginx
+    enabled: true
+    default: false
+    annotations: {}
+    controllerValue: k8s.io/ingress-nginx
+  ingressClass: nginx
+  publishService:
+    enabled: true
+    pathOverride: ""
+  tcp:
+    configMapNamespace: ""
+    annotations: {}
+  udp:
+    configMapNamespace: ""
+    annotations: {}
+  maxmindLicenseKey: ""
+  extraArgs:
+    default-ssl-certificate: "$(POD_NAMESPACE)/nginx-ingress-tls"
+  kind: Deployment
+  terminationGracePeriodSeconds: 300
+  nodeSelector:
+    kubernetes.io/os: linux
+  livenessProbe:
+    httpGet:
+      # should match container.healthCheckPath
+      path: "/healthz"
+      port: 10254
+      scheme: HTTP
+    initialDelaySeconds: 10
+    periodSeconds: 10
+    timeoutSeconds: 1
+    successThreshold: 1
+    failureThreshold: 5
+  readinessProbe:
+    httpGet:
+      # should match container.healthCheckPath
+      path: "/healthz"
+      port: 10254
+      scheme: HTTP
+    initialDelaySeconds: 10
+    periodSeconds: 10
+    timeoutSeconds: 1
+    successThreshold: 1
+    failureThreshold: 3
+  healthCheckPath: "/healthz"
+  replicaCount: 1
+  minAvailable: 1
+  resources:
+    limits:
+      cpu: 128m
+      memory: 90Mi
+    requests:
+      cpu: 64m
+      memory: 90Mi
+  autoscaling:
+    enabled: false
+    annotations: {}
+    minReplicas: 1
+    maxReplicas: 11
+    targetCPUUtilizationPercentage: 50
+    targetMemoryUtilizationPercentage: 50
+  service:
+    enabled: true
+    external:
+      enabled: true
+    labels: {}
+    type: LoadBalancer
+    ports:
+      http: 80
+      https: 443
+    targetPorts:
+      http: http
+      https: https
+    appProtocol: true
+    internal:
+      enabled: false
+  admissionWebhooks:
+    name: admission
+    annotations: {}
+    enabled: true
+    failurePolicy: Fail
+    port: 8443
+    certificate: "/usr/local/certificates/cert"
+    key: "/usr/local/certificates/key"
+    namespaceSelector: {}
+    objectSelector: {}
+    labels: {}
+    service:
+      annotations: {}
+      externalIPs: []
+      loadBalancerSourceRanges: []
+      servicePort: 443
+      type: ClusterIP
+    createSecretJob:
+      name: create
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        allowPrivilegeEscalation: false
+        seccompProfile:
+          type: RuntimeDefault
+        capabilities:
+          drop:
+            - ALL
+        readOnlyRootFilesystem: true
+      resources: {}
+      # limits:
+      #   cpu: 10m
+      #   memory: 20Mi
+      # requests:
+      #   cpu: 10m
+      #   memory: 20Mi
+    patchWebhookJob:
+      name: patch
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        allowPrivilegeEscalation: false
+        seccompProfile:
+          type: RuntimeDefault
+        capabilities:
+          drop:
+            - ALL
+        readOnlyRootFilesystem: true
+      resources: {}
+    patch:
+      enabled: true
+      image:
+        image: ingress-nginx/kube-webhook-certgen
+        tag: v1.5.2
+        digest: sha256:e8825994b7a2c7497375a9b945f386506ca6a3eda80b89b74ef2db743f66a5ea
+        pullPolicy: IfNotPresent
+      priorityClassName: ""
+      networkPolicy:
+        enabled: false
+      nodeSelector:
+        kubernetes.io/os: linux
+      rbac:
+        create: true
+      serviceAccount:
+        create: true
+        name: ""
+        automountServiceAccountToken: true
+    certManager:
+      enabled: false
+      rootCert:
+        duration: ""
+      admissionCert:
+        duration: ""
+        # issuerRef:
+        #   name: "issuer"
+        #   kind: "ClusterIssuer"
+  metrics:
+    port: 10254
+    portName: metrics
+    enabled: false
+    service:
+      enabled: true
+      servicePort: 10254
+      type: ClusterIP
+    serviceMonitor:
+      enabled: false
+      scrapeInterval: 30s
+  lifecycle:
+    preStop:
+      exec:
+        command:
+          - /wait-shutdown
+revisionHistoryLimit: 10
+defaultBackend:
+  enabled: false
+  name: defaultbackend
+  image:
+    image: defaultbackend-amd64
+    tag: "1.5"
+    pullPolicy: IfNotPresent
+    runAsNonRoot: true
+    runAsUser: 65534
+    runAsGroup: 65534
+    allowPrivilegeEscalation: false
+    seccompProfile:
+      type: RuntimeDefault
+    readOnlyRootFilesystem: true
+  extraArgs: {}
+  serviceAccount:
+    create: true
+    name: ""
+    automountServiceAccountToken: true
+  extraEnvs: []
+  port: 8080
+  livenessProbe:
+    failureThreshold: 3
+    initialDelaySeconds: 30
+    periodSeconds: 10
+    successThreshold: 1
+    timeoutSeconds: 5
+  readinessProbe:
+    failureThreshold: 6
+    initialDelaySeconds: 0
+    periodSeconds: 5
+    successThreshold: 1
+    timeoutSeconds: 5
+  nodeSelector:
+    kubernetes.io/os: linux
+  replicaCount: 1
+  minAvailable: 1
+  unhealthyPodEvictionPolicy: ""
+  resources: {}
+  # limits:
+  #   cpu: 10m
+  #   memory: 20Mi
+  # requests:
+  #   cpu: 10m
+  #   memory: 20Mi
+
+  autoscaling:
+    annotations: {}
+    enabled: false
+    minReplicas: 1
+    maxReplicas: 2
+    targetCPUUtilizationPercentage: 50
+    targetMemoryUtilizationPercentage: 50
+  networkPolicy:
+    enabled: false
+  service:
+    annotations: {}
+    servicePort: 80
+    type: ClusterIP
+rbac:
+  create: true
+  scope: false
+serviceAccount:
+  create: true
+  name: ""
+  automountServiceAccountToken: true

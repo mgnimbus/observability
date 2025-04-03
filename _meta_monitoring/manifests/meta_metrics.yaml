@@ -20,6 +20,17 @@ spec:
     limits:
       cpu: 1
       memory: 5Gi
+  volumes:
+    - name: otel-ca-volume
+      configMap:
+        name: otel-collector-ca
+        items:
+          - key: ca.crt
+            path: ca.crt
+  volumeMounts:
+    - name: otel-ca-volume
+      mountPath: /etc/otel/certs
+      readOnly: true
   env:
     - name: GOMEMLIMIT
       value: "4250MiB"
@@ -175,10 +186,13 @@ spec:
             new_name: $$${1}
     exporters:
       otlp:
-        endpoint: "http://otel.varidha.com:80"
+        endpoint: "https://otel.gowthamvandana.com:443"
         tls:
-          insecure_skip_verify: true
           insecure: true
+          insecure_skip_verify: false
+          ca_file: certs/server.crt
+          cert_file: certs/server.crt
+          key_file: certs/server.crt
         headers:
           X-Scope-OrgId: obsrv
         compression: snappy

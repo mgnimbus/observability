@@ -76,6 +76,17 @@ alertmanager:
     name: storage
     storageClass: obsrv-sc
     size: 10Gi
+  # extraVolumes:
+  #   - name: otel-ca-volume
+  #     configMap:
+  #       name: otel-collector-ca
+  #       items:
+  #         - key: ca.crt
+  #           path: ca.crt
+  # extraVolumeMounts:
+  #   - name: otel-ca-volume
+  #     mountPath: /etc/otel/certs
+  #     readOnly: true
 
 compactor:
   persistentVolume:

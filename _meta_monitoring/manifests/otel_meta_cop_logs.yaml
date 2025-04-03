@@ -36,11 +36,20 @@ extraVolumeMounts:
   - name: varlog
     mountPath: /host/var/log
     readOnly: true
+  - name: otel-ca-volume
+    mountPath: /etc/otel/certs
+    readOnly: true
 
 extraVolumes:
   - name: varlog
     hostPath:
       path: /var/log
+  - name: otel-ca-volume
+    configMap:
+      name: otel-collector-ca
+      items:
+        - key: ca.crt
+          path: ca.crt
 
 config:
   receivers:
@@ -200,7 +209,6 @@ config:
         - action: upsert
           key: otel.collector.id
           value: ${collector_id}-logs
-        - action: upsert
     resourcedetection:
       detectors: [env, system, ec2]
       timeout: 2s
@@ -228,10 +236,10 @@ config:
 
   exporters:
     otlp:
-      endpoint: "https://otel.varidha.com:443"
+      endpoint: "https://otel.gowthamvandana.com:443"
       tls:
-        insecure_skip_verify: true
         insecure: true
+        insecure_skip_verify: false
       headers:
         X-Scope-OrgId: obsrv
       compression: snappy

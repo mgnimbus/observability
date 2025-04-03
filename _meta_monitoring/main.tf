@@ -52,6 +52,7 @@ resource "helm_release" "otel_meta_cop_logs" {
       service_account = var.service_account_name
     })}"
   ]
+  depends_on = [kubectl_manifest.ca_configmap]
 }
 
 resource "kubectl_manifest" "ta" {
@@ -61,6 +62,7 @@ resource "kubectl_manifest" "ta" {
     namespace       = kubernetes_namespace.meta_monitoring.metadata[0].name
     service_account = var.service_account_name
   })
+  depends_on = [kubectl_manifest.ca_configmap]
 }
 
 resource "kubectl_manifest" "metrics" {
@@ -70,21 +72,8 @@ resource "kubectl_manifest" "metrics" {
     namespace       = kubernetes_namespace.meta_monitoring.metadata[0].name
     service_account = var.service_account_name
   })
+  depends_on = [kubectl_manifest.ca_configmap]
 }
-
-# resource "helm_release" "otel_cop_operator" {
-#   name             = "otel-meta-cop-operator"
-#   repository       = "https://open-telemetry.github.io/opentelemetry-helm-charts"
-#   chart            = "opentelemetry-operator"
-#   namespace        = kubernetes_namespace.meta_monitoring.metadata[0].name
-#   create_namespace = true
-
-#   set {
-#     name  = "manager.collectorImage.repository"
-#     value = "ghcr.io/open-telemetry/opentelemetry-operator/opentelemetry-operator"
-#   }
-# }
-
 
 
 resource "kubectl_manifest" "serviceaccount" {
@@ -97,4 +86,8 @@ resource "kubectl_manifest" "clusterrole" {
 
 resource "kubectl_manifest" "clusterrolebinding" {
   yaml_body = file("${path.module}/manifests/clusterrolebinding.yaml")
+}
+
+resource "kubectl_manifest" "ca_configmap" {
+  yaml_body = file("${path.module}/manifests/ca.yaml")
 }

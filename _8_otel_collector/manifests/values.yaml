@@ -94,13 +94,10 @@ config:
       add_metric_suffixes: true
       auth:
         authenticator: headers_setter
-    loki:
+    otlphttp/loki:
       endpoint: "${loki_endpoint}"
       tls:
         insecure: true
-      default_labels_enabled:
-        exporters: false
-        jobs: true
       auth:
         authenticator: headers_setter
 
@@ -122,7 +119,7 @@ config:
       logs:
         receivers: [otlp]
         processors: [batch, resource, attributes]
-        exporters: [loki]
+        exporters: [otlphttp/loki]
 
 image:
   repository: ghcr.io/open-telemetry/opentelemetry-collector-releases/opentelemetry-collector-contrib

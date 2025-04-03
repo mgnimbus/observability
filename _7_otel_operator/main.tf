@@ -10,5 +10,8 @@ resource "helm_release" "otel-operator" {
     name  = "manager.collectorImage.repository"
     value = "ghcr.io/open-telemetry/opentelemetry-operator/opentelemetry-operator"
   }
+  set {
+    name  = "crds.create"
+    value = "true"
+  }
 }
-

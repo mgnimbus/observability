@@ -144,6 +144,7 @@ ingester:
       - name: data
         size: 10Gi
         storageClass: obsrv-sc
+    enableStatefulSetAutoDeletePVC: true
   resources:
     limits:
       cpu: 50m
@@ -198,6 +199,7 @@ compactor:
       - name: data
         size: 10Gi
         storageClass: obsrv-sc
+    enableStatefulSetAutoDeletePVC: true
   resources:
     limits:
       cpu: 50m

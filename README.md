@@ -1,15 +1,26 @@
-# observability
-To create an observability platform to monitor logs, metrics and traces using eks,otel and grafana
+## 
+
+```
+ping otel.gowthamvandana.com
+
+nslookup otel.gowthamvandana.com
 
 
-sudo rpm --import https://releases.warp.dev/linux/keys/warp.asc
-sudo sh -c 'echo -e "[warpdotdev]\nname=warpdotdev\nbaseurl=https://releases.warp.dev/linux/rpm/stable\nenabled=1\ngpgcheck=1\ngpgkey=https://releases.warp.dev/linux/keys/warp.asc" > /etc/yum.repos.d/warpdotdev.repo'
-sudo dnf install warp-terminal
+dig otel.gowthamvandana.com
+
+```
 
 
 
-eval "$(starship init bash)"
+## Debugging Route53 
+```bash
+ aws route53 list-hosted-zones-by-name --dns-name gowthamvandana.com
 
-mkdir -p ~/.config && touch ~/.config/starship.toml
+# /hostedzone/Z04338881KRW1EL6YAQ5P
 
-export STARSHIP_CONFIG=/home/ec2-user/.config
+aws route53 list-resource-record-sets --hosted-zone-id /hostedzone/Z04338881KRW1EL6YAQ5P
+
+aws route53 get-hosted-zone --id Z04338881KRW1EL6YAQ5P
+
+# check whether its connected to right VPC
+```

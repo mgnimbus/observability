@@ -1,0 +1,81 @@
+replicaCount: 2
+
+revisionHistoryLimit: 10
+
+image:
+  repository: public.ecr.aws/eks/aws-load-balancer-controller
+  tag: v2.8.1
+  pullPolicy: IfNotPresent
+
+serviceAccount:
+  create: true
+  annotations:
+    "eks.amazonaws.com/role-arn": ${role_arn}
+    "eks.amazonaws.com/audiance": "sts.amazonaws.com"
+  name: ${service_account_name}
+  automountServiceAccountToken: true
+  imagePullSecrets:
+
+rbac:
+  create: true
+
+podSecurityContext:
+  fsGroup: 65534
+
+terminationGracePeriodSeconds: 10
+
+resources:
+priorityClassName: system-cluster-critical
+
+configureDefaultAffinity: true
+
+enableCertManager: false
+
+clusterName: ${eks_cluster}
+
+cluster:
+  dnsDomain: cluster.local
+
+ingressClassParams:
+  create: false
+
+createIngressClassResource: true
+region: ${region}
+vpcId: ${vpc_id}
+
+defaultTargetType: ip
+
+enableShield: false
+
+enableWaf: false
+
+enableWafv2: false
+
+keepTLSSecret: true
+# Liveness probe configuration for the controller
+livenessProbe:
+  failureThreshold: 2
+  httpGet:
+    path: /healthz
+    port: 61779
+    scheme: HTTP
+  initialDelaySeconds: 30
+  timeoutSeconds: 10
+
+# readiness probe configuration for the controller
+readinessProbe:
+  failureThreshold: 2
+  httpGet:
+    path: /readyz
+    port: 61779
+    scheme: HTTP
+  successThreshold: 1
+  initialDelaySeconds: 10
+  timeoutSeconds: 10
+
+hostNetwork: false
+
+ingressClassConfig:
+  default: false
+
+enableServiceMutatorWebhook: true

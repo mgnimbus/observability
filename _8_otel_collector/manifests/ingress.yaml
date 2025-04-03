@@ -8,6 +8,10 @@ metadata:
     nginx.ingress.kubernetes.io/backend-protocal: "GRPC"
     nginx.ingress.kubernetes.io/rewrite-target: /
 spec:
+  tls:
+    - hosts:
+        - otel.${meda_domain_name}
+      secretName: otel-tls
   rules:
     - host: otel.${meda_domain_name}
     - http:
