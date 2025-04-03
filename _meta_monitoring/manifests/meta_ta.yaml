@@ -15,16 +15,13 @@ spec:
     serviceAccount: ${service_account}
   serviceAccount: ${service_account}
   volumes:
-    - name: otel-ca-volume
-      configMap:
-        name: otel-collector-ca
-        items:
-          - key: ca.crt
-            path: ca.crt
+    - name: internal-ca-volume
+      mountPath: /etc/otel/certs/ca.crt
+      subPath: ca.crt
   volumeMounts:
-    - name: otel-ca-volume
-      mountPath: /etc/otel/certs
-      readOnly: true
+    - name: internal-ca-volume
+      secret:
+      secretName: otel-internal-ca-secret
   resources:
     requests:
       cpu: 100m
@@ -190,6 +187,7 @@ spec:
         tls:
           insecure: true
           insecure_skip_verify: false
+          ca_file: /etc/otel/certs/ca.crt
         headers:
           X-Scope-OrgId: obsrv
         compression: snappy

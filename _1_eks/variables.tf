@@ -53,10 +53,15 @@ variable "account_id" {
   default     = "328268088738"
 }
 
-variable "service_account_name" {
-  description = "EBS service account"
-  type        = string
-}
+# variable "ebs_service_account_name" {
+#   description = "EBS service account"
+#   type        = string
+# }
+
+# variable "vpc_service_account_name" {
+#   description = "VPC CNI service account"
+#   type        = string
+# }
 
 variable "storage_class_name" {
   description = "EBS Strorage Class Name"

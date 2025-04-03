@@ -8,16 +8,26 @@ This involves creating your own mini Certificate Authority (CA) and using it to 
 openssl genpkey -algorithm RSA -out ca.key -aes256 
 # Use a strong passphrase! gowthammeda
 
+openssl genrsa -out ca.key 4096
+# Keep ca.key extremely secure!
+
 # Generate CA certificate (valid for, e.g., 5 years)
 openssl req -x509 -new -nodes -key ca.key -sha256 -days 1825 -out ca.crt \
   -subj "/C=US/ST=TX/L=KT/O=ObsrvgInternal/CN=MyObsrvCA"
-# Keep ca.key very secure! ca.crt is the public part to distribute.
+
+openssl req -x509 -new -nodes -key ca.key -sha256 -days 3650 -out ca.crt \
+  -subj "/C=US/ST=California/L=MountainView/O=Obsrv/OU=Infrastructure/CN=MyObsrvlOTelCA"
+# Answer the prompts or use -subj to provide details directly.
+# CN=MyInternalOTelCA is just an identifier for your internal CA.  
+#Keep ca.key very secure! ca.crt is the public part to distribute.
 ```
 ## Generate Server Key and Certificate Signing Request (CSR):
 
 ### Generate Server private key
 ```bash
 openssl genpkey -algorithm RSA -out server.key
+
+openssl genrsa -out server.key 4096
 ```
 ### Create CSR
 
@@ -25,6 +35,8 @@ openssl genpkey -algorithm RSA -out server.key
 openssl req -new -key server.key -out server.csr \
   -subj "/C=US/ST=TX/L=KT/O=obsrv/CN=*.gowthamvandana.com" 
   # Use your intended hostname!
+
+openssl req -new -key server.key -out server.csr -config csr.conf  
 ```
 ```
 # You can also add Subject Alternative Names (SANs) if needed, which is recommended:
@@ -57,11 +69,11 @@ openssl req -new -key server.key -out server.csr \
 openssl x509 -req -in server.csr -CA ca.crt -CAkey ca.key -CAcreateserial \
   -out server.crt -days 365 -sha256
 
+
 # or   
 
 # Use san.cnf if you created it
-openssl x509 -req -in server.csr -CA ca.crt -CAkey ca.key -CAcreateserial \
--out server.crt -days 365 -sha256 -extfile san.cnf -extensions v3_req
+openssl x509 -req -in server.csr -CA ca.crt -CAkey ca.key -CAcreateserial \\n  -out server.crt -days 365 -sha256 -extfile v3.ext
 
 # Enter CA key passphrase when prompted.
 # server.crt is your signed server certificate.

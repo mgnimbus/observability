@@ -88,6 +88,14 @@ resource "kubectl_manifest" "clusterrolebinding" {
   yaml_body = file("${path.module}/manifests/clusterrolebinding.yaml")
 }
 
-resource "kubectl_manifest" "ca_configmap" {
-  yaml_body = file("${path.module}/manifests/ca.yaml")
+# Secret containing the CA cert for internal clients to trust the server
+resource "kubernetes_secret_v1" "otel_internal_ca" {
+  metadata {
+    name      = "otel-internal-ca-secret"
+    namespace = kubernetes_namespace.meta_monitoring.metadata[0].name
+  }
+  type = "Opaque"
+  data = {
+    "ca.crt" = filebase64("${path.module}/_meta_monitoring/manifests/ca.crt")
+  }
 }

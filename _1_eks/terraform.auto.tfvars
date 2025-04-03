@@ -13,7 +13,5 @@ cluster_version = "1.30"
 vpc_name       = "vpc"
 vpc_cidr_block = "10.0.0.0/16"
 
-#Cluster Addon
-service_account_name = "obsrv-sa"
-storage_class_name   = "obsrv-sc"
+storage_class_name = "obsrv-sc"
 

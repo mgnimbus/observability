@@ -26,6 +26,8 @@ loki:
   storage:
     bucketNames:
       chunks: ${loki_chunks_bucket}
+      region: ${region}
+      endpoint: com.amazonaws.us-east-1.s3
   storageConfig:
     tsdb_shipper:
       shared_store: aws
@@ -36,6 +38,7 @@ loki:
       s3: s3://${loki_ruler_bucket}
       region: ${region}
       s3forcepathstyle: true
+      endpoint: com.amazonaws.us-east-1.s3
   monitoring:
     dashboards:
       enabled: true
@@ -79,6 +82,7 @@ loki:
         s3:
           bucketnames: ${loki_chunks_bucket}
           region: ${region}
+          endpoint: com.amazonaws.us-east-1.s3
     analytics:
       reporting_enabled: false
     ruler:
@@ -88,6 +92,7 @@ loki:
           insecure: false
           s3: s3://${loki_ruler_bucket}
           region: us-east-1
+          endpoint: com.amazonaws.us-east-1.s3
     compactor:
       retention_enabled: true
       delete_request_store: s3

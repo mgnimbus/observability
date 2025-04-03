@@ -20,8 +20,8 @@ resource "kubernetes_secret" "nginx_tls" {
     namespace = kubernetes_namespace.nginx_ingress.metadata[0].name
   }
   data = {
-    "tls.crt" = filebase64("${path.module}/openssl/server/server.crt")
-    "tls.key" = filebase64("${path.module}/openssl/server/server.key")
+    "tls.crt" = filebase64("${path.module}/server/server.crt")
+    "tls.key" = filebase64("${path.module}/server/server.key")
   }
   type = "kubernetes.io/tls"
 }

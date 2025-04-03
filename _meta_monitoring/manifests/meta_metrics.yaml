@@ -21,16 +21,13 @@ spec:
       cpu: 1
       memory: 5Gi
   volumes:
-    - name: otel-ca-volume
-      configMap:
-        name: otel-collector-ca
-        items:
-          - key: ca.crt
-            path: ca.crt
+    - name: internal-ca-volume
+      mountPath: /etc/otel/certs/ca.crt
+      subPath: ca.crt
   volumeMounts:
-    - name: otel-ca-volume
-      mountPath: /etc/otel/certs
-      readOnly: true
+    - name: internal-ca-volume
+      secret:
+      secretName: otel-internal-ca-secret
   env:
     - name: GOMEMLIMIT
       value: "4250MiB"
@@ -190,9 +187,7 @@ spec:
         tls:
           insecure: true
           insecure_skip_verify: false
-          ca_file: certs/server.crt
-          cert_file: certs/server.crt
-          key_file: certs/server.crt
+          ca_file: /etc/otel/certs/ca.crt
         headers:
           X-Scope-OrgId: obsrv
         compression: snappy
