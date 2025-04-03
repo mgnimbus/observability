@@ -9,7 +9,7 @@ resource "helm_release" "aws_lb_controller" {
     role_arn             = aws_iam_role.irsa_lbc_role.arn
     vpc_id               = data.terraform_remote_state.eks.outputs.vpc_id
     region               = var.aws_region
-    eks_cluster          = data.terraform_remote_state.eks.outputs.cluster_id
+    eks_cluster          = data.terraform_remote_state.eks.outputs.cluster_name
     service_account_name = var.service_account_name
   })]
 }

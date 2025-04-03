@@ -1,9 +1,12 @@
-# --- Configure VPC Endpoints Module ---
 module "vpc_endpoints" {
   source  = "terraform-aws-modules/vpc/aws//modules/vpc-endpoints"
   version = "~> 5.0"
 
   vpc_id = module.vpc.vpc_id
+
+  # Specify the subnets where Interface Endpoint ENIs should be created
+  # Use the private subnets where your EKS nodes reside
+  subnet_ids = module.vpc.private_subnets # <-- ADD THIS LINE
 
   # Use the dedicated SG for Interface Endpoints
   security_group_ids = [aws_security_group.vpc_ep_sg.id]
@@ -14,44 +17,47 @@ module "vpc_endpoints" {
       service             = "ecr.api"
       private_dns_enabled = true
       tags                = { Name = "${local.name}-ecr-api-ep" }
-      # policy              = data.aws_iam_policy_document.generic_endpoint_policy.json # Optional
     },
     ecr_dkr = {
       service             = "ecr.dkr"
       private_dns_enabled = true
       tags                = { Name = "${local.name}-ecr-dkr-ep" }
-      # policy              = data.aws_iam_policy_document.generic_endpoint_policy.json # Optional
     },
     ec2 = {
       service             = "ec2"
       private_dns_enabled = true
       tags                = { Name = "${local.name}-ec2-ep" }
-      # policy              = data.aws_iam_policy_document.generic_endpoint_policy.json # Optional
+      # Note: subnet_ids can sometimes be specified per-endpoint too,
+      # but specifying at the top level is usually sufficient for this use case.
     },
     sts = {
       service             = "sts"
       private_dns_enabled = true
       tags                = { Name = "${local.name}-sts-ep" }
-      # policy              = data.aws_iam_policy_document.generic_endpoint_policy.json # Optional
     },
 
-    # S3 Endpoint - Changed to Gateway type
+    # S3 Endpoint - Gateway type (associates with route tables, not subnets directly here)
     s3_gateway = {
-      service      = "s3"
-      service_type = "Gateway" # Correct type
-      # No security_group_ids or private_dns_enabled needed for Gateway
-      # Associate with private subnet route tables (module might do this, or use separate resource)
-      route_table_ids = module.vpc.private_route_table_ids # Pass the private route table IDs from VPC module
+      service         = "s3"
+      service_type    = "Gateway"
+      route_table_ids = module.vpc.private_route_table_ids # Ensure this output exists and is correct
       tags            = { Name = "${local.name}-s3-gateway-ep" }
-      # policy          = data.aws_iam_policy_document.generic_endpoint_policy.json # Optional policy for Gateway endpoint
     }
+    # Add other endpoints like 'logs' if needed
+    # logs = { ... }
   }
 
   tags = merge(local.common_tags, { Name = "${local.name}-vpc-endpoints" })
 
-  depends_on = [module.vpc, aws_security_group.vpc_ep_sg] # Depend on the SG
+  depends_on = [module.vpc, aws_security_group.vpc_ep_sg]
 }
 
+# --- Ensure these supporting resources are correctly defined ---
+
+# resource "aws_security_group" "vpc_ep_sg" { ... }
+# data "aws_iam_policy_document" "generic_endpoint_policy" { ... } # (If used)
+# Make sure the Node Security group allows outbound 443 to vpc_ep_sg
+# Make sure vpc_ep_sg allows inbound 443 from the Node Security Group
 resource "aws_security_group" "vpc_ep_sg" {
   name_prefix = "${local.name}-vpc_tls"
   description = "Allow TLS inbound traffic"

@@ -4,7 +4,6 @@ module "eks" {
 
   cluster_name    = "${local.name}-${var.cluster_name}"
   cluster_version = "1.30"
-
   # EKS Addons
   cluster_addons = {
     coredns = {
@@ -40,13 +39,13 @@ module "eks" {
 
   vpc_id                                   = module.vpc.vpc_id
   subnet_ids                               = module.vpc.private_subnets
+  control_plane_subnet_ids                 = module.vpc.intra_subnets
   enable_cluster_creator_admin_permissions = true
   authentication_mode                      = "API"
   eks_managed_node_groups = {
     obsrv = {
       ami_type       = "BOTTLEROCKET_x86_64"
       instance_types = ["t3a.large"]
-      iam_role_arn   = aws_iam_role.eks-nodegroup-role.arn
       subnet_ids     = module.vpc.private_subnets
 
       min_size     = 2
@@ -69,6 +68,37 @@ module "eks" {
       #       [settings.kernel]
       #       lockdown = "integrity"
       #     EOT
+      create_iam_role          = true
+      iam_role_name            = "eks-managed-node-group-${local.name}"
+      iam_role_use_name_prefix = false
+      iam_role_description     = "EKS managed node group complete example role"
+      iam_role_tags = {
+        Purpose = "Protector of the kubelet"
+      }
+      iam_role_additional_policies = {
+        AmazonEC2ContainerRegistryReadOnly = "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly"
+        AmazonEKS_CNI_Policy               = "arn:aws:iam::aws:policy/AmazonEKS_CNI_Policy"
+        AmazonEKSWorkerNodePolicy          = "arn:aws:iam::aws:policy/AmazonEKSWorkerNodePolicy"
+        additional                         = aws_iam_policy.node_additional.arn
+      }
+      iam_role_policy_statements = [
+        {
+          sid    = "ECRPullThroughCache"
+          effect = "Allow"
+          actions = [
+            "ecr:CreateRepository",
+            "ecr:BatchImportUpstreamImage",
+          ]
+          resources = ["*"]
+        }
+      ]
+
+      launch_template_tags = {
+        # enable discovery of autoscaling groups by cluster-autoscaler
+        "k8s.io/cluster-autoscaler/enabled" : true,
+        "k8s.io/cluster-autoscaler/${local.name}" : "owned",
+      }
+
     }
   }
   tags       = local.common_tags
@@ -78,7 +108,7 @@ module "eks" {
 resource "null_resource" "update_kubeconfig" {
   provisioner "local-exec" {
     command = <<EOT
-      aws eks update-kubeconfig --region ${var.aws_region} --name ${module.eks.cluster_id} --kubeconfig /home/nimbus/.kube/config
+      aws eks update-kubeconfig --region ${var.aws_region} --name ${module.eks.cluster_name} --kubeconfig /home/nimbus/.kube/config
       zsh -c "source ~/.zshrc"
     EOT
   }

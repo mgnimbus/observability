@@ -27,7 +27,7 @@ resource "helm_release" "external_dns" {
   namespace        = kubernetes_namespace.external_dns.metadata[0].name
 
   values = [
-    templatefile("${path.module}/manifests/dns/dns.yaml", {
+    templatefile("${path.module}/manifests/dns.yaml", {
       region = var.aws_region
       }
   )]
@@ -87,7 +87,7 @@ resource "aws_iam_role" "irsa_r53_role" {
         Effect = "Allow"
         Sid    = ""
         Principal = {
-          Federated = "${aws_iam_openid_connect_provider.oidc_provider.arn}"
+          Federated = "${data.terraform_remote_state.eks.outputs.oidc_provider_arn}"
         }
         Condition = {
           StringEquals = {
@@ -102,7 +102,6 @@ resource "aws_iam_role" "irsa_r53_role" {
   tags = {
     tag-key = "AllowExternalDNSUpdates"
   }
-  depends_on = [aws_eks_cluster.eks_cluster, aws_eks_node_group.eks_ng_private]
 }
 
 
@@ -110,5 +109,4 @@ resource "aws_iam_role" "irsa_r53_role" {
 resource "aws_iam_role_policy_attachment" "EKSAmazonr53Role" {
   policy_arn = aws_iam_policy.irsa_r53_policy.arn
   role       = aws_iam_role.irsa_r53_role.name
-  depends_on = [aws_eks_cluster.eks_cluster, aws_eks_node_group.eks_ng_private]
 }
