@@ -30,13 +30,13 @@ module "eks" {
     }
   }
   # Add this block to grant 'nimbus' user access
-  access_entries = {
-    nimbus_user_access = {
-      principal_arn = "arn:aws:iam::058264194719:user/nimbus"
-      username      = "nimbus"
-      groups        = ["system:masters"]
-    }
-  }
+  # access_entries = {
+  #   nimbus_user_access = {
+  #     principal_arn = "arn:aws:iam::058264194719:user/nimbus"
+  #     username      = "nimbus"
+  #     groups        = ["system:masters"]
+  #   }
+  # }
 
   vpc_id                                   = module.vpc.vpc_id
   subnet_ids                               = module.vpc.private_subnets
@@ -47,6 +47,7 @@ module "eks" {
       ami_type       = "BOTTLEROCKET_x86_64"
       instance_types = ["t3a.large"]
       iam_role_arn   = aws_iam_role.eks-nodegroup-role.arn
+      subnet_ids     = module.vpc.private_subnets
 
       min_size     = 2
       max_size     = 3
@@ -72,6 +73,16 @@ module "eks" {
   }
   tags       = local.common_tags
   depends_on = [module.vpc]
+}
+
+resource "null_resource" "update_kubeconfig" {
+  provisioner "local-exec" {
+    command = <<EOT
+      aws eks update-kubeconfig --region ${var.aws_region} --name ${module.eks.cluster_id} --kubeconfig /home/nimbus/.kube/config
+      zsh -c "source ~/.zshrc"
+    EOT
+  }
+  depends_on = [module.eks]
 }
 
 

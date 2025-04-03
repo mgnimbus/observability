@@ -124,3 +124,8 @@ output "eks_managed_node_groups_autoscaling_group_names" {
   description = "List of the autoscaling group names created by EKS managed node groups"
   value       = module.eks.eks_managed_node_groups_autoscaling_group_names
 }
+
+output "private_route_table_ids" {
+  description = "Route table IDs"
+  value       = module.vpc.private_route_table_ids
+}
