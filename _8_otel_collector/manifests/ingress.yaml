@@ -6,15 +6,14 @@ metadata:
   annotations:
     kubernetes.io/ingress.class: "nginx"
     nginx.ingress.kubernetes.io/backend-protocol: "GRPC"
-    nginx.ingress.kubernetes.io/rewrite-target: /
 spec:
   tls:
     - hosts:
-        - otel.${meda_domain_name}
+        - otel.gowthamvandana.com
       secretName: otel-tls
   rules:
-    - host: otel.${meda_domain_name}
-    - http:
+    - host: otel.gowthamvandana.com
+      http:
         paths:
           - path: /
             pathType: Prefix

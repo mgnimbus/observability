@@ -94,6 +94,8 @@ compactor:
     name: storage
     storageClass: obsrv-sc
     size: 10Gi
+    enableRetentionPolicy: false
+    whenDeleted: Delete
   resources:
     requests:
       cpu: 20m
@@ -110,6 +112,7 @@ ingester:
     name: storage
     storageClass: obsrv-sc
     size: 10Gi
+    whenDeleted: Delete
   zoneAwareReplication:
     enabled: false
   resources:
@@ -149,6 +152,7 @@ store_gateway:
     name: storage
     storageClass: obsrv-sc
     size: 10Gi
+    whenDeleted: Delete
   replicas: 2
   zoneAwareReplication:
     enabled: false

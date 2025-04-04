@@ -5,7 +5,7 @@ metadata:
   namespace: default
 spec:
   containers:
-    - image: alpine:3.12
+    - image: alpine/curl
       command:
         - /bin/sh
         - "-c"
