@@ -52,7 +52,7 @@ resource "helm_release" "otel_meta_cop_logs" {
       service_account = var.service_account_name
     })}"
   ]
-  depends_on = [kubectl_manifest.ca_configmap]
+  depends_on = [kubernetes_secret_v1.otel_internal_ca]
 }
 
 resource "kubectl_manifest" "ta" {
@@ -62,7 +62,7 @@ resource "kubectl_manifest" "ta" {
     namespace       = kubernetes_namespace.meta_monitoring.metadata[0].name
     service_account = var.service_account_name
   })
-  depends_on = [kubectl_manifest.ca_configmap]
+  depends_on = [kubernetes_secret_v1.otel_internal_ca]
 }
 
 resource "kubectl_manifest" "metrics" {
@@ -72,7 +72,7 @@ resource "kubectl_manifest" "metrics" {
     namespace       = kubernetes_namespace.meta_monitoring.metadata[0].name
     service_account = var.service_account_name
   })
-  depends_on = [kubectl_manifest.ca_configmap]
+  depends_on = [kubernetes_secret_v1.otel_internal_ca]
 }
 
 
@@ -96,6 +96,6 @@ resource "kubernetes_secret_v1" "otel_internal_ca" {
   }
   type = "Opaque"
   data = {
-    "ca.crt" = filebase64("${path.module}/_meta_monitoring/manifests/ca.crt")
+    "ca.crt" = filebase64("${path.module}/manifests/ca.crt")
   }
 }

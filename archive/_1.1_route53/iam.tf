@@ -41,12 +41,12 @@ resource "aws_iam_role" "irsa_r53_role" {
         Effect = "Allow"
         Sid    = ""
         Principal = {
-          Federated = "${data.terraform_remote_state.eks.outputs.aws_iam_openid_connect_provider_arn}"
+          Federated = "${data.terraform_remote_state.eks.outputs.oidc_provider_arn}"
         }
         Condition = {
           StringEquals = {
-            "${data.terraform_remote_state.eks.outputs.aws_iam_openid_connect_provider_extract_from_arn}:aud" : "sts.amazonaws.com",
-            "${data.terraform_remote_state.eks.outputs.aws_iam_openid_connect_provider_extract_from_arn}:sub" : "system:serviceaccount:${var.namespace}:external-dns"
+            "${data.terraform_remote_state.eks.outputs.oidc_provider}:aud" : "sts.amazonaws.com",
+            "${data.terraform_remote_state.eks.outputs.oidc_provider}:sub" : "system:serviceaccount:${var.namespace}:external-dns"
           }
         }
       },

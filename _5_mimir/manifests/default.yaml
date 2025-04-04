@@ -33,7 +33,7 @@ mimir:
       s3:
         bucket_name: meda-dev-mackerel-mimir-chunks
         insecure: false
-        endpoint: com.amazonaws.us-east-1.s3
+        endpoint: s3.us-east-1.amazonaws.com
       tsdb:
         dir: /data/tsdb
     compactor:

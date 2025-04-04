@@ -88,12 +88,12 @@ resource "aws_iam_role" "irsa_r53_role" {
         Effect = "Allow"
         Sid    = ""
         Principal = {
-          Federated = "${data.terraform_remote_state.eks.outputs.aws_iam_openid_connect_provider_arn}"
+          Federated = "${data.terraform_remote_state.eks.outputs.oidc_provider_arn}"
         }
         Condition = {
           StringEquals = {
-            "${data.terraform_remote_state.eks.outputs.aws_iam_openid_connect_provider_extract_from_arn}:aud" : "sts.amazonaws.com",
-            "${data.terraform_remote_state.eks.outputs.aws_iam_openid_connect_provider_extract_from_arn}:sub" : "system:serviceaccount:${var.dns_namespace}:${var.dns_service_account_name}"
+            "${data.terraform_remote_state.eks.outputs.oidc_provider}:aud" : "sts.amazonaws.com",
+            "${data.terraform_remote_state.eks.outputs.oidc_provider}:sub" : "system:serviceaccount:${var.dns_namespace}:${var.dns_service_account_name}"
           }
         }
       }
@@ -111,3 +111,14 @@ resource "aws_iam_role_policy_attachment" "EKSAmazonr53Role" {
   policy_arn = aws_iam_policy.irsa_r53_policy.arn
   role       = aws_iam_role.irsa_r53_role.name
 }
+
+# module "irsa_dns" {
+#   source  = "terraform-aws-modules/iam/aws//modules/iam-assumable-role-with-oidc"
+#   version = "5.39.0"
+
+#   create_role                   = true
+#   role_name                     = "AmazonEKSR53Role-${local.name}"
+#   provider_url                  = data.terraform_remote_state.eks.outputs.oidc_providerdata.terraform_remote_state.eks.outputs.oidc_provider
+#   role_policy_arns              = [data.aws_iam_policy.irsa_r53_policy.arn]
+#   oidc_fully_qualified_subjects = [":aud" : "sts.amazonaws.com", ":sub" : "system:serviceaccount:${var.dns_namespace}:${var.dns_service_account_name}" ]
+# }

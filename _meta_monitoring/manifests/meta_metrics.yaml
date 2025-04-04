@@ -22,12 +22,12 @@ spec:
       memory: 5Gi
   volumes:
     - name: internal-ca-volume
-      mountPath: /etc/otel/certs/ca.crt
-      subPath: ca.crt
+      secret:
+        secretName: otel-internal-ca-secret
   volumeMounts:
     - name: internal-ca-volume
-      secret:
-      secretName: otel-internal-ca-secret
+      mountPath: /etc/otel/certs/
+      readOnly: true
   env:
     - name: GOMEMLIMIT
       value: "4250MiB"
@@ -185,7 +185,7 @@ spec:
       otlp:
         endpoint: "https://otel.gowthamvandana.com:443"
         tls:
-          insecure: true
+          insecure: false
           insecure_skip_verify: false
           ca_file: /etc/otel/certs/ca.crt
         headers:

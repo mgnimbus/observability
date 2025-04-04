@@ -4,7 +4,7 @@ resource "helm_release" "mimir" {
   chart            = "mimir-distributed"
   namespace        = var.namespace
   create_namespace = true
-  timeout          = 360
+  timeout          = 300
 
   values = [
     templatefile("${path.module}/manifests/default.yaml", {

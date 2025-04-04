@@ -111,19 +111,19 @@ output "ebs_storage_class_name" {
 # EKS Addons
 ################################################################################
 
-output "cluster_addons" {
-  description = "Map of attribute maps for all EKS cluster addons enabled"
-  value       = module.eks.cluster_addons
-}
+# output "cluster_addons" {
+#   description = "Map of attribute maps for all EKS cluster addons enabled"
+#   value       = module.eks.cluster_addons
+# }
 
 ################################################################################
 # EKS Managed Node Group
 ################################################################################
 
-output "eks_managed_node_groups" {
-  description = "Map of attribute maps for all EKS managed node groups created"
-  value       = module.eks.eks_managed_node_groups
-}
+# output "eks_managed_node_groups" {
+#   description = "Map of attribute maps for all EKS managed node groups created"
+#   value       = module.eks.eks_managed_node_groups
+# }
 
 output "eks_managed_node_groups_autoscaling_group_names" {
   description = "List of the autoscaling group names created by EKS managed node groups"

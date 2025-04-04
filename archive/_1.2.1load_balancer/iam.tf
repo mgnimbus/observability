@@ -257,13 +257,13 @@ resource "aws_iam_role" "irsa_lbc_role" {
     {
       "Effect": "Allow",
       "Principal": {
-        "Federated": "${data.terraform_remote_state.eks.outputs.aws_iam_openid_connect_provider_arn}"
+        "Federated": "${data.terraform_remote_state.eks.outputs.oidc_provider}"
       },
       "Action": "sts:AssumeRoleWithWebIdentity",
       "Condition": {
         "StringEquals": {
-          "${data.terraform_remote_state.eks.outputs.aws_iam_openid_connect_provider_extract_from_arn}:aud": "sts.amazonaws.com",
-          "${data.terraform_remote_state.eks.outputs.aws_iam_openid_connect_provider_extract_from_arn}:sub": "system:serviceaccount:${var.namespace}:${var.service_account_name}"
+          "${data.terraform_remote_state.eks.outputs.oidc_provider}:aud": "sts.amazonaws.com",
+          "${data.terraform_remote_state.eks.outputs.oidc_provider}:sub": "system:serviceaccount:${var.namespace}:${var.service_account_name}"
         }
       }
     }

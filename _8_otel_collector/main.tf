@@ -3,7 +3,7 @@ resource "helm_release" "otel_collector" {
   name             = "opentelemetry-collector"
   repository       = "https://open-telemetry.github.io/opentelemetry-helm-charts"
   chart            = "opentelemetry-collector"
-  namespace        = kubernetes_namespace.nginx_ingress.metadata[0].name
+  namespace        = kubernetes_namespace.otel_collector.metadata[0].name
   create_namespace = true
   timeout          = 60
 
@@ -14,7 +14,7 @@ resource "helm_release" "otel_collector" {
       tempo_endpoint = "http://tempo-distributed-distributor.tempo.svc.4317"
     })
   ]
-  depends_on = [kubernetes_secret.kubernetes_secret]
+  depends_on = [kubernetes_secret.otel_collector]
 }
 
 resource "kubectl_manifest" "ingress" {
@@ -37,7 +37,7 @@ resource "kubernetes_secret" "otel_collector" {
   type = "kubernetes.io/tls"
 }
 
-resource "kubernetes_namespace" "otel_collector-" {
+resource "kubernetes_namespace" "otel_collector" {
   metadata {
     name = "opentelemetry-collector"
   }

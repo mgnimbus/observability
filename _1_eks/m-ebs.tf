@@ -7,10 +7,6 @@ resource "kubernetes_storage_class_v1" "ebs_sc" {
   depends_on          = [module.eks]
 }
 
-output "peks" {
-  value = data.terraform_remote_state.eks.outputs
-}
-
 data "terraform_remote_state" "eks" {
   backend = "s3"
   config = {
