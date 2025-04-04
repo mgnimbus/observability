@@ -236,9 +236,9 @@ config:
     otlp:
       endpoint: "https://otel.gowthamvandana.com:443"
       tls:
-        insecure: ${var.skip_tls_verify}
-        insecure_skip_verify: ${var.skip_tls_verify}
-        ca_file: /etc/otel/certs/ca.crt
+        insecure: false
+        insecure_skip_verify: true
+        #ca_file: /etc/otel/certs/ca.crt
       headers:
         X-Scope-OrgId: obsrv
       compression: snappy

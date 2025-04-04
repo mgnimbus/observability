@@ -31,7 +31,8 @@ resource "helm_release" "external_dns" {
       region = var.aws_region
       }
   )]
-  depends_on = [kubernetes_service_account.external_dns, module.private_zones]
+  depends_on = [kubernetes_service_account.external_dns]
+  #depends_on = [kubernetes_service_account.external_dns, module.private_zones]
 }
 
 # k create ns external-dns

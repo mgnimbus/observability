@@ -23,4 +23,6 @@ aws route53 list-resource-record-sets --hosted-zone-id /hostedzone/Z04338881KRW1
 aws route53 get-hosted-zone --id Z04338881KRW1EL6YAQ5P
 
 # check whether its connected to right VPC
+
+
 ```
