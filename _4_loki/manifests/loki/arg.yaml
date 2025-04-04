@@ -1,0 +1,219 @@
+global:
+  clusterDomain: cluster.local
+fullnameOverride: loki
+deploymentMode: Distributed
+
+loki:
+  image:
+    registry: dockerhub-remote.dock.merck.com
+    repository: grafana/loki
+    pullPolicy: IfNotPresent
+
+  schemaConfig:
+    configs:
+      - from: "2023-01-20"
+        store: tsdb
+        object_store: s3
+        schema: v13
+        index:
+          prefix: index_
+          period: 24h
+
+  storage_config:
+    aws:
+      s3: s3://region/${loki_chunks_bucket}
+      bucketnames: ${loki_chunks_bucket}
+    filesystem:
+      directory: /var/loki/chunks
+    tsdb_shipper:
+      active_index_directory: /var/loki/index
+      cache_location: /var/loki/cache
+
+  ingester:
+    lifecycler:
+      ring:
+        kvstore:
+          store: memberlist
+        replication_factor: 1
+    chunk_idle_period: 30m
+    chunk_block_size: 262144
+    chunk_encoding: snappy
+    chunk_retain_period: 1m
+    wal:
+      enabled: true
+      dir: /var/loki/wal
+
+  tracing:
+    enabled: true
+
+  query_range:
+    align_queries_with_step: true
+    index_stats_results_cache:
+      compression: snappy
+    max_retries: 5
+    parallelise_shardable_queries: true
+
+  tableManager:
+    retention_deletes_enabled: false
+    retention_period: 0s
+
+  distributor:
+    ring:
+      kvstore:
+        store: memberlist
+
+  storage:
+    type: s3
+    bucketNames:
+      chunks: ${loki_chunks_bucket}
+      ruler: ${loki_ruler_bucket}
+
+  memcached:
+    chunk_cache:
+      enabled: true
+      host: chunk-cache-memcached.loki.svc
+      service: memcached-client
+      batch_size: 256
+      parallelism: 10
+    results_cache:
+      enabled: true
+      host: results-cache-memcached.loki.svc
+      service: memcached-client
+      default_validity: 12h
+
+  structuredConfig:
+    auth_enabled: true
+    server:
+      log_level: warn
+    pattern_ingester:
+      enabled: true
+    limits_config:
+      retention_period: 30d
+      split_queries_by_interval: 15m
+      max_query_parallelism: 32
+      max_queriers_per_tenant: 5
+      allow_structured_metadata: true
+      max_label_names_per_series: 20
+      ingestion_rate_mb: 6
+    query_scheduler:
+      max_outstanding_requests_per_tenant: 2048
+      grpc_client_config:
+        grpc_compression: snappy
+    frontend:
+      max_outstanding_per_tenant: 2048
+      compress_responses: true
+      grpc_client_config:
+        grpc_compression: snappy
+    frontend_worker:
+      grpc_client_config:
+        grpc_compression: snappy
+    common:
+      storage:
+        s3:
+          bucketnames: ${loki_chunks_bucket}
+          region: ${region}
+          storage_class: INTELLIGENT_TIERING
+    analytics:
+      reporting_enabled: false
+    ruler:
+      alertmanager_url: https://alertmanager.xx
+      external_url: https://alertmanager.xx
+      ring:
+        kvstore:
+          store: memberlist
+      rule_path: /tmp/loki/scratch
+      storage:
+        type: s3
+        s3:
+          insecure: false
+          region: us-east-1
+          storage_class: INTELLIGENT_TIERING
+    runtime_config:
+      file: /etc/loki/runtime-config/runtime-config.yaml
+    compactor:
+      working_directory: /var/loki/compactor
+      retention_enabled: true
+      delete_request_store: s3
+    ingester_client:
+      grpc_client_config:
+        grpc_compression: snappy
+    storage_config:
+      boltdb_shipper:
+        index_gateway_client:
+          grpc_client_config:
+            grpc_compression: snappy
+
+  runtimeConfig: ${indent(4, runtime_config)}
+
+monitoring:
+  dashboards:
+    enabled: true
+  rules:
+    enabled: true
+  serviceMonitor:
+    enabled: true
+  selfMonitoring:
+    enabled: false
+    tenant:
+      name: "argus"
+
+test:
+  enabled: false
+
+lokiCanary:
+  enabled: false
+
+serviceAccount:
+  create: true
+  name: ${role_name}
+  annotations:
+    eks.amazonaws.com/role-arn: ${role_arn}
+  automountServiceAccountToken: true
+
+gateway:
+  enabled: true
+  containerPort: 8080
+  verboseLogging: true
+  maxUnavailable: 1
+  resources:
+    limits:
+      cpu: 64m
+      memory: 256Mi
+    requests:
+      cpu: 24m
+      memory: 128Mi
+  autoscaling:
+    enabled: true
+    minReplicas: 1
+    maxReplicas: 3
+    targetCPUUtilizationPercentage: 70
+    targetMemoryUtilizationPercentage: 70
+  deploymentStrategy:
+    type: RollingUpdate
+  image:
+    registry: dockerhub-remote.dock.merck.com
+    repository: nginxinc/nginx-unprivileged
+    tag: 1.20.2-alpine
+  ingress:
+    enabled: true
+    ingressClassName: nginx
+    annotations:
+      kubernetes.io/ingress.class: nginx
+      kubernetes.io/tls-acme: "true"
+      cert-manager.io/issuer: awscpaissuer
+      cert-manager.io/issuer-kind: AWSPCAClusterIssuer
+      cert-manager.io/issuer-group: awspca.cert-manager.io
+      cert-manager.io/usages: "server auth, client auth"
+      cert-manager.io/common-name: loki.${argus_domain_name}
+    hosts:
+      - host: loki.${argus_domain_name}
+        paths:
+          - path: /
+            pathType: Prefix
+    tls:
+      - hosts:
+          - loki.${argus_domain_name}
+        secretName: loki-tls
+  tolerations:
+    - key: "loki"
+      operator: "Equal"

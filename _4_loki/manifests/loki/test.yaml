@@ -17,28 +17,29 @@ loki:
   schemaConfig:
     configs:
       - from: "2023-01-20"
-        index:
-          period: 24h
-          prefix: index_
-        object_store: aws
-        schema: v13
         store: tsdb
+        object_store: s3
+        schema: v13
+        index:
+          prefix: index_
+          period: 24h
+
   storage:
+    type: s3
     bucketNames:
       chunks: ${loki_chunks_bucket}
-      region: ${region}
-      endpoint: s3.us-east-1.amazonaws.com
-  storageConfig:
+      ruler: ${loki_ruler_bucket}
+
+  storage_config:
+    aws:
+      s3: s3://region/${loki_chunks_bucket}
+      bucketnames: ${loki_chunks_bucket}
+    filesystem:
+      directory: /var/loki/chunks
     tsdb_shipper:
-      shared_store: aws
       active_index_directory: /var/loki/index
       cache_location: /var/loki/cache
-    aws:
-      insecure: false
-      s3: s3://${loki_ruler_bucket}
-      region: ${region}
-      s3forcepathstyle: true
-      endpoint: s3.us-east-1.amazonaws.com
+
   monitoring:
     dashboards:
       enabled: true
@@ -49,13 +50,14 @@ loki:
     selfMonitoring:
       enabled: true
       tenant:
-        name: "argus"
+        name: "obsrv"
+
   structuredConfig:
     auth_enabled: true
     server:
       log_level: warn
     limits_config:
-      retention_period: 30d
+      retention_period: 1h
       split_queries_by_interval: 15m
       max_query_parallelism: 32
       max_queriers_per_tenant: 5
@@ -82,18 +84,21 @@ loki:
         s3:
           bucketnames: ${loki_chunks_bucket}
           region: ${region}
-          endpoint: s3.us-east-1.amazonaws.com
     analytics:
       reporting_enabled: false
     ruler:
+      ring:
+        kvstore:
+          store: memberlist
+      rule_path: /tmp/loki/scratch
       storage:
         type: s3
         s3:
           insecure: false
           s3: s3://${loki_ruler_bucket}
-          region: us-east-1
-          endpoint: s3.us-east-1.amazonaws.com
+          region: ${region}
     compactor:
+      working_directory: /var/loki/compactor
       retention_enabled: true
       delete_request_store: s3
     ingester_client:
@@ -105,39 +110,44 @@ loki:
           grpc_client_config:
             grpc_compression: snappy
 
-# ServiceMonitor configuration
-serviceMonitor:
+gateway:
   enabled: true
-
-# Rules for the Prometheus Operator
-prometheusRule:
-  enabled: true
-  groups:
-    - name: loki_rules
-
-# gateway:
-#   enabled: true
-#   replicas: 1
-#   containerPort: 8080
-#   verboseLogging: true
-#   autoscaling:
-#     enabled: false
-#     minReplicas: 1
-#     maxReplicas: 3
-#     targetCPUUtilizationPercentage: 60
-#     targetMemoryUtilizationPercentage:
-#   deploymentStrategy:
-#     type: RollingUpdate
-#   image:
-#     registry: docker.io
-#     repository: nginxinc/nginx-unprivileged
-#   resources:
-#   limits:
-#     cpu: 50m
-#     memory: 512Mi
-#   requests:
-#     cpu: 50m
-#     memory: 128Mi
+  replicas: 1
+  containerPort: 8080
+  verboseLogging: true
+  autoscaling:
+    enabled: false
+    minReplicas: 1
+    maxReplicas: 3
+    targetCPUUtilizationPercentage: 60
+    targetMemoryUtilizationPercentage:
+  deploymentStrategy:
+    type: RollingUpdate
+  image:
+    registry: docker.io
+    repository: nginxinc/nginx-unprivileged
+  resources:
+  limits:
+    cpu: 50m
+    memory: 512Mi
+  requests:
+    cpu: 50m
+    memory: 128Mi
+  ingress:
+    enabled: false
+    ingressClassName: nginx
+    annotations:
+      kubernetes.io/ingress.class: nginx
+      kubernetes.io/tls-acme: "true"
+    hosts:
+      - host: loki.gowtham.com
+        paths:
+          - path: /
+            pathType: Prefix
+    tls:
+      - hosts:
+          - loki.gowtham.com
+        secretName: loki-tls
 
 ingester:
   replicas: 2
@@ -149,7 +159,7 @@ ingester:
       - name: data
         size: 10Gi
         storageClass: obsrv-sc
-    enableStatefulSetAutoDeletePVC: true
+        enableStatefulSetAutoDeletePVC: true
   resources:
     limits:
       cpu: 50m
@@ -204,7 +214,7 @@ compactor:
       - name: data
         size: 10Gi
         storageClass: obsrv-sc
-    enableStatefulSetAutoDeletePVC: true
+        enableStatefulSetAutoDeletePVC: true
   resources:
     limits:
       cpu: 50m

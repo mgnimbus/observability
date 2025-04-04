@@ -5,11 +5,11 @@ metadata:
   namespace: ${namespace}
 spec:
   mode: daemonset
-  image: otel/opentelemetry-collector-contrib
+  image: otel/opentelemetry-collector-contrib:0.115.1
   serviceAccount: ${service_account}
   targetAllocator:
     enabled: true
-    image: ghcr.io/open-telemetry/opentelemetry-operator/target-allocator
+    image: ghcr.io/open-telemetry/opentelemetry-operator/target-allocator:0.120.0
     replicas: 1
     allocationStrategy: per-node
     serviceAccount: ${service_account}

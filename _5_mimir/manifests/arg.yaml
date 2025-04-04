@@ -1,0 +1,507 @@
+# Mimir Config
+image:
+  repository: dockerhub-remote.dock.merck.com/grafana/mimir
+fullnameOverride: mimir
+serviceAccount:
+  create: true
+  name: ${role_name}
+  annotations:
+    eks.amazonaws.com/role-arn: ${role_arn}
+mimir:
+  structuredConfig:
+    multitenancy_enabled: true
+    tenant_federation:
+      enabled: true
+    server:
+      log_level: warn
+    limits:
+      max_global_series_per_user: 15000000
+      max_label_names_per_series: 50
+      out_of_order_time_window: 6h
+      results_cache_ttl_for_out_of_order_time_window: 10m
+      ingestion_rate: 150000
+      ingestion_burst_size: 250000
+      compactor_blocks_retention_period: 30d
+      query_sharding_total_shards: 16
+      max_query_parallelism: 240
+    memberlist:
+      compression_enabled: true
+    ruler:
+      query_frontend:
+        grpc_client_config:
+          grpc_compression: snappy
+    query_scheduler:
+      grpc_client_config:
+        grpc_compression: snappy
+    ingester_client:
+      grpc_client_config:
+        grpc_compression: snappy
+    frontend:
+      grpc_client_config:
+        grpc_compression: snappy
+      max_body_size: 300000000
+    alertmanager:
+      alertmanager_client:
+        grpc_compression: snappy
+    blocks_storage:
+      backend: s3
+      s3:
+        bucket_name: ${mimir_s3_chunks}
+        region: ${region}
+        endpoint: s3.${region}.amazonaws.com
+        insecure: false
+        storage_class: INTELLIGENT_TIERING
+    alertmanager_storage:
+      backend: s3
+      s3:
+        bucket_name: ${mimir_s3_alertmanager}
+        region: ${region}
+        endpoint: s3.${region}.amazonaws.com
+        insecure: false
+        storage_class: INTELLIGENT_TIERING
+    ruler_storage:
+      backend: s3
+      s3:
+        bucket_name: ${mimir_s3_ruler}
+        region: ${region}
+        endpoint: s3.${region}.amazonaws.com
+        storage_class: INTELLIGENT_TIERING
+
+alertmanager:
+  enabled: ${alert_enabled}
+  persistentVolume:
+    enabled: false
+  replicas: 1
+  resources:
+    limits:
+      cpu: 256m
+      memory: 2Gi
+    requests:
+      cpu: 32m
+      memory: 128Mi
+  tolerations:
+    - key: "mimir"
+      operator: "Equal"
+      value: "true"
+      effect: "NoSchedule"
+  nodeSelector:
+    nodegroup: "mimir"
+  fallbackConfig: |
+    route:
+      group_by: ['alertname', 'namespace']
+      group_interval: 5m
+      repeat_interval: 1h
+      group_wait: 30s
+      receiver: 'devnull'
+      routes:
+        - receiver: moogsoft-alerts-critical
+          match:
+            severity: 'critical'
+          continue: true
+        - receiver: moogsoft-alerts-major
+          match:
+            severity: 'major'
+          continue: true
+        - receiver: moogsoft-alerts-minor
+          match:
+            severity: 'minor'
+          continue: true
+        - receiver: 'moogsoft-alerts-warning'
+          match:
+            severity: 'warning'
+          continue: true
+        - receiver: moogsoft-alerts-ok
+          match:
+            severity: 'ok'
+          continue: true
+    receivers:
+      - name: 'devnull'
+      - name: moogsoft-alerts-critical
+        webhook_configs:
+          - send_resolved: true
+            url: ${apigateway_url}
+            http_config:
+              bearer_token: ${api_key}
+      - name: moogsoft-alerts-major
+        webhook_configs:
+          - send_resolved: true
+            url: ${apigateway_url}
+            http_config:
+              bearer_token: ${api_key}
+      - name: moogsoft-alerts-minor
+        webhook_configs:
+          - send_resolved: true
+            url: ${apigateway_url}
+            http_config:
+              bearer_token: ${api_key}
+      - name: moogsoft-alerts-warning
+        webhook_configs:
+          - send_resolved: true
+            url: ${apigateway_url}
+            http_config:
+              bearer_token: ${api_key}
+      - name: moogsoft-alerts-ok
+        webhook_configs:
+          - send_resolved: true
+            url: ${apigateway_url}
+            http_config:
+              bearer_token: ${api_key}
+
+compactor:
+  replicas: 1
+  resources:
+    limits:
+      cpu: 1
+      memory: 2Gi
+    requests:
+      cpu: 128m
+      memory: 1Gi
+  persistentVolume:
+    enabled: false
+  block_ranges: 12h0m0s
+  block_sync_concurrency: 8
+  meta_sync_concurrency: 20
+  tolerations:
+    - key: "mimir"
+      operator: "Equal"
+      value: "true"
+      effect: "NoSchedule"
+  nodeSelector:
+    nodegroup: "mimir"
+
+distributor:
+  replicas: 2
+  resources:
+    limits:
+      cpu: 1
+      memory: 3Gi
+    requests:
+      cpu: 128m
+      memory: 1500Mi
+  tolerations:
+    - key: "mimir"
+      operator: "Equal"
+      value: "true"
+      effect: "NoSchedule"
+  nodeSelector:
+    nodegroup: "mimir"
+
+ingester:
+  zoneAwareReplication:
+    enabled: false
+  persistentVolume:
+    enabled: false
+  replicas: 2
+  resources:
+    limits:
+      cpu: 1
+      memory: 5Gi
+    requests:
+      cpu: 256m
+      memory: 1500Mi
+  tolerations:
+    - key: "mimir"
+      operator: "Equal"
+      value: "true"
+      effect: "NoSchedule"
+  nodeSelector:
+    nodegroup: "mimir"
+  read_path_cpu_utilization_limit: 0.8
+  read_path_memory_utilization_limit: 20132659200
+
+store_gateway:
+  persistentVolume:
+    enabled: false
+  replicas: 1
+  resources:
+    limits:
+      cpu: 256m
+      memory: 1Gi
+    requests:
+      cpu: 96m
+      memory: 512Mi
+  zoneAwareReplication:
+    enabled: false
+  tolerations:
+    - key: "mimir"
+      operator: "Equal"
+      value: "true"
+      effect: "NoSchedule"
+  nodeSelector:
+    nodegroup: "mimir"
+
+nginx:
+  image:
+    registry: dockerhub-remote.dock.merck.com
+    repository: nginxinc/nginx-unprivileged
+  enabled: true
+  replicas: 1
+  resources:
+    limits:
+      cpu: 128m
+      memory: 512Mi
+    requests:
+      cpu: 32m
+      memory: 64Mi
+  ingress:
+    enabled: true
+    annotations:
+      kubernetes.io/ingress.class: nginx
+      kubernetes.io/tls-acme: "true"
+      cert-manager.io/issuer: awscpaissuer
+      cert-manager.io/issuer-kind: AWSPCAClusterIssuer
+      cert-manager.io/issuer-group: awspca.cert-manager.io
+      cert-manager.io/usages: "server auth, client auth"
+      cert-manager.io/common-name: mimir.${argus_domain_name}
+    hosts:
+      - host: mimir.${argus_domain_name}
+        paths:
+          - path: /
+            pathType: Prefix
+        ingressClassName: nginx
+    tls:
+      - hosts:
+          - mimir.${argus_domain_name}
+        secretName: mimir-tls
+  tolerations:
+    - key: "mimir"
+      operator: "Equal"
+      value: "true"
+      effect: "NoSchedule"
+  nodeSelector:
+    nodegroup: "mimir"
+
+ruler:
+  replicas: 1
+  resources:
+    limits:
+      cpu: 64m
+      memory: 512Mi
+    requests:
+      cpu: 32m
+      memory: 128Mi
+  enabled: true
+  tolerations:
+    - key: "mimir"
+      operator: "Equal"
+      value: "true"
+      effect: "NoSchedule"
+  nodeSelector:
+    nodegroup: "mimir"
+  remoteEvaluationDedicatedQueryPath: true
+
+ruler_querier:
+  replicas: 2
+  resources:
+    limits:
+      cpu: 128m
+      memory: 512Mi
+    requests:
+      cpu: 96m
+      memory: 256Mi
+  enabled: true
+  tolerations:
+    - key: "mimir"
+      operator: "Equal"
+      value: "true"
+      effect: "NoSchedule"
+  nodeSelector:
+    nodegroup: "mimir"
+
+ruler_query_frontend:
+  replicas: 1
+  resources:
+    limits:
+      cpu: 64m
+      memory: 512Mi
+    requests:
+      cpu: 32m
+      memory: 128Mi
+  enabled: true
+  tolerations:
+    - key: "mimir"
+      operator: "Equal"
+      value: "true"
+      effect: "NoSchedule"
+  nodeSelector:
+    nodegroup: "mimir"
+
+ruler_query_scheduler:
+  replicas: 2
+  resources:
+    limits:
+      cpu: 64m
+      memory: 512Mi
+    requests:
+      cpu: 32m
+      memory: 128Mi
+  enabled: true
+  tolerations:
+    - key: "mimir"
+      operator: "Equal"
+      value: "true"
+      effect: "NoSchedule"
+  nodeSelector:
+    nodegroup: "mimir"
+
+results-cache:
+  enabled: true
+  replicas: 1
+  resources:
+    limits:
+      cpu: 64m
+      memory: 512Mi
+    requests:
+      cpu: 32m
+      memory: 128Mi
+  tolerations:
+    - key: "mimir"
+      operator: "Equal"
+      value: "true"
+      effect: "NoSchedule"
+  nodeSelector:
+    nodegroup: "mimir"
+
+metadata-cache:
+  enabled: true
+  replicas: 1
+  resources:
+    limits:
+      cpu: 64m
+      memory: 512Mi
+    requests:
+      cpu: 32m
+      memory: 128Mi
+  tolerations:
+    - key: "mimir"
+      operator: "Equal"
+      value: "true"
+      effect: "NoSchedule"
+  nodeSelector:
+    nodegroup: "mimir"
+
+index-cache:
+  enabled: true
+  replicas: 1
+  resources:
+    limits:
+      cpu: 64m
+      memory: 512Mi
+    requests:
+      cpu: 32m
+      memory: 128Mi
+  tolerations:
+    - key: "mimir"
+      operator: "Equal"
+      value: "true"
+      effect: "NoSchedule"
+  nodeSelector:
+    nodegroup: "mimir"
+
+chunks-cache:
+  enable: true
+  replicas: 1
+  resources:
+    limits:
+      cpu: 64m
+      memory: 512Mi
+    requests:
+      cpu: 32m
+      memory: 128Mi
+  tolerations:
+    - key: "mimir"
+      operator: "Equal"
+      value: "true"
+      effect: "NoSchedule"
+  nodeSelector:
+    nodegroup: "mimir"
+
+querier:
+  replicas: 2
+  resources:
+    limits:
+      cpu: 64m
+      memory: 512Mi
+    requests:
+      cpu: 32m
+      memory: 128Mi
+  max_concurrent: 16
+  timeout: 1m
+  tolerations:
+    - key: "mimir"
+      operator: "Equal"
+      value: "true"
+      effect: "NoSchedule"
+  nodeSelector:
+    nodegroup: "mimir"
+
+query_frontend:
+  replicas: 1
+  resources:
+    limits:
+      cpu: 64m
+      memory: 512Mi
+    requests:
+      cpu: 32m
+      memory: 128Mi
+  flush_blocks_on_shutdown: true
+  memory_snapshot_on_shutdown: true
+  log_queries_longer_than: 30s
+  parallelize_shardable_queries: true
+  tolerations:
+    - key: "mimir"
+      operator: "Equal"
+      value: "true"
+      effect: "NoSchedule"
+  nodeSelector:
+    nodegroup: "mimir"
+
+query_scheduler:
+  replicas: 1
+  resources:
+    limits:
+      cpu: 64m
+      memory: 512Mi
+    requests:
+      cpu: 32m
+      memory: 128Mi
+  tolerations:
+    - key: "mimir"
+      operator: "Equal"
+      value: "true"
+      effect: "NoSchedule"
+  nodeSelector:
+    nodegroup: "mimir"
+
+memcached:
+  image:
+    repository: dockerhub-remote.dock.merck.com/memcached
+  podDisruptionBudget:
+    maxUnavailable: 1
+
+memcachedExporter:
+  image:
+    repository: dockerhub-remote.dock.merck.com/prom/memcached-exporter
+  podDisruptionBudget:
+    maxUnavailable: 1
+
+overrides_exporter:
+  enabled: false
+
+rollout_operator:
+  enabled: false
+
+minio:
+  enabled: false
+
+metaMonitoring:
+  dashboards:
+    enabled: true
+  serviceMonitor:
+    enabled: true
+  prometheusRule:
+    enabled: true
+    mimirAlerts: true
+    mimirRules: true
+  grafanaAgent:
+    enabled: false

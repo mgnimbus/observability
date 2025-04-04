@@ -6,6 +6,7 @@ resource "helm_release" "otel_collector" {
   namespace        = kubernetes_namespace.otel_collector.metadata[0].name
   create_namespace = true
   timeout          = 60
+  version          = "0.109.0"
 
   values = [
     templatefile("${path.module}/manifests/values.yaml", {
