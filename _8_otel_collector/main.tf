@@ -18,6 +18,10 @@ resource "helm_release" "otel_collector" {
   depends_on = [kubernetes_secret.otel_collector]
 }
 
+# exporters:
+# otlphttp:
+#   endpoint: http://<loki-addr>:3100/otlp
+
 resource "kubectl_manifest" "ingress" {
   yaml_body = templatefile("${path.module}/manifests/ingress.yaml", {
     meda_domain_name = "gowthamvandana.com"

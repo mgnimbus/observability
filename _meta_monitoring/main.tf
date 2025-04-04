@@ -25,6 +25,7 @@ resource "helm_release" "kube_state_metrics" {
   depends_on       = [helm_release.metrics_server]
 }
 
+/*
 resource "helm_release" "node_exporter" {
   name = "node-exporter"
 
@@ -34,6 +35,7 @@ resource "helm_release" "node_exporter" {
   create_namespace = false
   namespace        = kubernetes_namespace.meta_monitoring.metadata[0].name
 }
+*/
 
 resource "helm_release" "otel_meta_cop_logs" {
   name = "otel-meta-cop-logs"
@@ -56,7 +58,7 @@ resource "helm_release" "otel_meta_cop_logs" {
   ]
   depends_on = [kubernetes_secret_v1.otel_internal_ca]
 }
-
+/*
 resource "kubectl_manifest" "ta" {
   yaml_body = templatefile("${path.module}/manifests/meta_ta.yaml", {
     collector_id    = "obsrv-ta"
@@ -82,6 +84,7 @@ resource "kubectl_manifest" "metrics" {
   })
   depends_on = [kubernetes_secret_v1.otel_internal_ca]
 }
+*/
 
 
 resource "kubectl_manifest" "serviceaccount" {

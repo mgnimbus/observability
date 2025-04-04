@@ -57,6 +57,7 @@ loki:
     server:
       log_level: warn
     limits_config:
+      allow_structured_metadata: true
       retention_period: 1h
       split_queries_by_interval: 15m
       max_query_parallelism: 32
@@ -280,3 +281,7 @@ test:
   enabled: false
 lokiCanary:
   enabled: false
+
+memberlist:
+  service:
+    publishNotReadyAddresses: false

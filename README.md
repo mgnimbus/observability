@@ -116,3 +116,7 @@ curl failed to verify the legitimacy of the server and therefore could not
 establish a secure connection to it. To learn more about this situation and
 how to fix it, please visit the web page mentioned above.
 ```
+
+1 eks
+2.1 lbc 2.1.1 nginx
+2.2 cert 2.2. otel
