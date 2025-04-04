@@ -7,3 +7,5 @@ business_divsion = "meda"
 namespace            = "meta-monitoring"
 service_account_name = "otel-ta-sa"
 
+obsrv_domain_name = "gowthamvandna.com"
+skip_tls_verify   = true

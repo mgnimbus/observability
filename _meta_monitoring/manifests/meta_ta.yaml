@@ -18,6 +18,7 @@ spec:
     - name: internal-ca-volume
       secret:
         secretName: otel-internal-ca-secret
+        defaultMode: 444
 
   volumeMounts:
     - name: internal-ca-volume
@@ -184,10 +185,10 @@ spec:
             new_name: $$${1}
     exporters:
       otlp:
-        endpoint: "https://otel.gowthamvandana.com:443"
+        endpoint: "https://otel.${var.obsrv_domain_name}"
         tls:
-          insecure: false
-          insecure_skip_verify: false
+          insecure: ${var.skip_tls_verify}
+          insecure_skip_verify: ${var.skip_tls_verify}
           ca_file: /etc/otel/certs/ca.crt
         headers:
           X-Scope-OrgId: obsrv

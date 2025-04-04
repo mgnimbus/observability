@@ -32,3 +32,13 @@ variable "service_account_name" {
   description = "Namespace EKS service account"
   type        = string
 }
+
+variable "obsrv_domain_name" {
+  description = "Obsrv Domain name"
+  type        = string
+}
+
+variable "skip_tls_verify" {
+  description = "To enable/disable TLS"
+  type        = bool
+}
