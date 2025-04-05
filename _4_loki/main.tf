@@ -6,6 +6,8 @@ resource "helm_release" "loki" {
   namespace        = var.namespace
   create_namespace = true
   timeout          = 120
+  # atomic           = true
+  wait = false
 
   values = [
     templatefile("${path.module}/manifests/loki/test.yaml", {
