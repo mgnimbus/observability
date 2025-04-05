@@ -85,19 +85,22 @@ config:
     #     insecure: true
     #   auth:
     #     authenticator: headers_setter
-    prometheusremotewrite:
-      endpoint: "${mimir_endpoint}"
-      tls:
-        insecure: true
-      resource_to_telemetry_conversion:
-        enabled: true # Convert resource attributes to metric labels
-      add_metric_suffixes: true
-      auth:
-        authenticator: headers_setter
-    otlphttp/loki:
+    # prometheusremotewrite:
+    #   endpoint: "${mimir_endpoint}"
+    #   tls:
+    #     insecure: true
+    #   resource_to_telemetry_conversion:
+    #     enabled: true # Convert resource attributes to metric labels
+    #   add_metric_suffixes: true
+    #   auth:
+    #     authenticator: headers_setter
+    loki:
       endpoint: "${loki_endpoint}"
       tls:
         insecure: true
+      default_labels_enabled:
+        exporters: false
+        jobs: true
       auth:
         authenticator: headers_setter
 
@@ -108,10 +111,10 @@ config:
         address: 0.0.0.0:8888
         level: detailed
     pipelines:
-      metrics:
-        receivers: [otlp]
-        processors: [batch, resource, attributes]
-        exporters: [prometheusremotewrite]
+      # metrics:
+      #   receivers: [otlp]
+      #   processors: [batch, resource, attributes]
+      #   exporters: [prometheusremotewrite]
       # traces:
       #   receivers: [otlp]
       #   processors: [batch, resource, attributes]
@@ -119,7 +122,7 @@ config:
       logs:
         receivers: [otlp]
         processors: [batch, resource, attributes]
-        exporters: [otlphttp/loki]
+        exporters: [loki]
 
 image:
   repository: ghcr.io/open-telemetry/opentelemetry-collector-releases/opentelemetry-collector-contrib
@@ -184,6 +187,3 @@ resources:
   limits:
     cpu: 1
     memory: 4Gi
-# exporters:
-# otlphttp:
-#   endpoint: http://<loki-addr>:3100/otlp

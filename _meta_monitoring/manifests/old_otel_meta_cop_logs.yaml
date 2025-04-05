@@ -171,8 +171,36 @@ config:
           - k8s.namespace.name
           - k8s.node.name
           - k8s.pod.start_time
+    attributes:
+      actions:
+        - action: insert
+          key: loki.attribute.labels
+          value:
+            - stream
+            - filename
+            - pod
+            - namespace
+            - pod_start_time
+            - pod_uid
+            - log.file.path
+        - action: insert
+          key: loki.resource.labels
+          value:
+            - cloud.platform
+            - cloud.availability_zone
+            - cloud.account.id
+            - cloud.region
+            - host.id
+            - host.image.id
+            - host.type
+            - snow.id
+            - otel.collector.id
+            - k8s.cluster.id
     resource:
       attributes:
+        - action: insert
+          key: loki.format
+          value: json
         - action: upsert
           key: k8s.cluster.id
           value: ${eks_cluster}
@@ -227,7 +255,14 @@ config:
       logs:
         receivers: [filelog, k8s_events]
         processors:
-          [resource, resourcedetection, k8sattributes, filter/noise, batch]
+          [
+            resource,
+            attributes,
+            resourcedetection,
+            k8sattributes,
+            filter/noise,
+            batch,
+          ]
         exporters: [otlp]
 
 ports:

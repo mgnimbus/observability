@@ -6,21 +6,18 @@ resource "helm_release" "otel_collector" {
   namespace        = kubernetes_namespace.otel_collector.metadata[0].name
   create_namespace = true
   timeout          = 60
-  version          = "0.109.0"
+  version          = "0.120.1"
 
   values = [
     templatefile("${path.module}/manifests/values.yaml", {
       mimir_endpoint = "http://mimir-nginx.mimir.svc/api/vi/push"
-      loki_endpoint  = "http://loki-gateway.loki.svc:80/loki/api/v1/push"
+      loki_endpoint  = "http://loki-gateway.loki.svc:80/otlp"
+      #loki_endpoint  = "http://loki-gateway.loki.svc:80/loki/api/v1/push"
       tempo_endpoint = "http://tempo-distributed-distributor.tempo.svc.4317"
     })
   ]
   depends_on = [kubernetes_secret.otel_collector]
 }
-
-# exporters:
-# otlphttp:
-#   endpoint: http://<loki-addr>:3100/otlp
 
 resource "kubectl_manifest" "ingress" {
   yaml_body = templatefile("${path.module}/manifests/ingress.yaml", {

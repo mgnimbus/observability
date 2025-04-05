@@ -43,6 +43,8 @@ config:
           endpoint: 0.0.0.0:4317
           max_recv_msg_size_mib: 250
           include_metadata: true
+        http:
+          endpoint: 0.0.0.0:4318
 
   processors:
     batch:
@@ -94,13 +96,10 @@ config:
     #   add_metric_suffixes: true
     #   auth:
     #     authenticator: headers_setter
-    loki:
+    otlphttp/loki:
       endpoint: "${loki_endpoint}"
       tls:
         insecure: true
-      default_labels_enabled:
-        exporters: false
-        jobs: true
       auth:
         authenticator: headers_setter
 
@@ -115,14 +114,14 @@ config:
       #   receivers: [otlp]
       #   processors: [batch, resource, attributes]
       #   exporters: [prometheusremotewrite]
-      # traces:
+      # # traces:
       #   receivers: [otlp]
       #   processors: [batch, resource, attributes]
       #   exporters: [otlp]
       logs:
         receivers: [otlp]
         processors: [batch, resource, attributes]
-        exporters: [loki]
+        exporters: [otlphttp/loki]
 
 image:
   repository: ghcr.io/open-telemetry/opentelemetry-collector-releases/opentelemetry-collector-contrib

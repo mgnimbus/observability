@@ -42,7 +42,7 @@ resource "helm_release" "otel_meta_cop_logs" {
 
   repository       = "https://open-telemetry.github.io/opentelemetry-helm-charts"
   chart            = "opentelemetry-collector"
-  version          = "0.73.1"
+  version          = "0.120.1"
   create_namespace = false
   namespace        = kubernetes_namespace.meta_monitoring.metadata[0].name
   timeout          = 60
@@ -65,7 +65,7 @@ resource "kubectl_manifest" "ta" {
     eks_cluster     = data.terraform_remote_state.eks.outputs.cluster_name
     namespace       = kubernetes_namespace.meta_monitoring.metadata[0].name
     service_account = var.service_account_name
-    version         = "0.115.1"
+    version         = "0.120.1"
     # obsrv_domain_name = var.obsrv_domain_name
     # skip_tls_verify   = var.skip_tls_verify
   })
