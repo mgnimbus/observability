@@ -3,7 +3,7 @@ data "terraform_remote_state" "eks" {
   backend = "s3"
   config = {
     bucket = "observability-tfstate-bucky"
-    key    = "eks_module/terraform.tfstate"
+    key    = "eks_module_new/terraform.tfstate"
     region = var.region
   }
 }

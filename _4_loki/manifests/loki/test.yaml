@@ -109,23 +109,9 @@ loki:
           attributes_config:
             - action: index_label
               attributes:
-                - stream
-                - filename
                 - pod
                 - namespace
-                - pod_start_time
-                - pod_uid
                 - log.file.path
-                - cloud.platform
-                - cloud.availability_zone
-                - cloud.account.id
-                - cloud.region
-                - host.id
-                - host.image.id
-                - host.type
-                - snow.id
-                - otel.collector.id
-                - k8s.cluster.id
 
     compactor:
       retention_enabled: true

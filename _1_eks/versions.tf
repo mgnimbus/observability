@@ -2,7 +2,7 @@ terraform {
   backend "s3" {
     bucket         = "observability-tfstate-bucky"
     region         = "us-east-1"
-    key            = "eks_module/terraform.tfstate"
+    key            = "eks_module_new/terraform.tfstate"
     dynamodb_table = "nimbus-state-lock"
     encrypt        = true
   }

@@ -117,13 +117,13 @@ config:
         # Rename attributes for clarity
         - type: move
           from: attributes.container_name
-          to: attributes["container"]
+          to: resource["container"]
         - type: move
           from: attributes.namespace
-          to: attributes["namespace"]
+          to: resource["namespace"]
         - type: move
           from: attributes.pod_name
-          to: attributes["pod"]
+          to: resource.attributes["pod"]
         - type: move
           from: attributes.restart_count
           to: attributes["pod_restart_count"]
@@ -227,7 +227,7 @@ config:
       logs:
         receivers: [filelog, k8s_events]
         processors:
-          [resource, resourcedetection, k8sattributes, filter/noise, batch]
+          [filter/noise, batch]
         exporters: [otlp]
 
 ports:
