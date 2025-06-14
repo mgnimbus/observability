@@ -31,7 +31,7 @@ mimir:
       s3:
         bucket_name: meda-dev-mackerel-mimir-chunks
         insecure: false
-        endpoint: s3.us-east-1.amazonaws.com
+        endpoint: s3.ap-south-2.amazonaws.com
     frontend:
       log_queries_longer_than: 10s
       grpc_client_config:

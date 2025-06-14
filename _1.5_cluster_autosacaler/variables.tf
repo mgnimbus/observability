@@ -1,7 +1,7 @@
 variable "region" {
   description = "Region in which the resources are deployed"
   type        = string
-  default     = "us-east-1"
+  default     = "ap-south-2"
 }
 
 variable "account_id" {

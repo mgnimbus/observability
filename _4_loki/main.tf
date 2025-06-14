@@ -6,6 +6,7 @@ resource "helm_release" "loki" {
   namespace        = var.namespace
   create_namespace = true
   timeout          = 120
+  version          = "6.27.0"
   # atomic           = true
   wait = false
 
@@ -13,9 +14,9 @@ resource "helm_release" "loki" {
     templatefile("${path.module}/manifests/loki/test.yaml", {
       role_name          = "loki-sa"
       role_arn           = aws_iam_role.irsa_s3_role.arn
-      loki_ruler_bucket  = "meda-dev-mackerel-loki-ruler"
-      loki_chunks_bucket = "meda-dev-mackerel-loki-chunks"
-      region             = "us-east-1"
+      loki_ruler_bucket  = data.terraform_remote_state.observability_buckets.outputs.observability_bucket_names["loki-ruler"]
+      loki_chunks_bucket = data.terraform_remote_state.observability_buckets.outputs.observability_bucket_names["loki-chunks"]
+      region             = "ap-south-2"
       }
   )]
 

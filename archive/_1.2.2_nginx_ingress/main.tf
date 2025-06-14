@@ -40,7 +40,7 @@ resource "helm_release" "ingress_nginx" {
 
   set {
     name  = "controller.service.annotations.service\\.beta\\.kubernetes\\.io/aws-load-balancer-ssl-cert"
-    value = "arn:aws:acm:us-east-1:058264194719:certificate/442d0a9c-5bb3-43ba-8ad2-27e53a40f0f6"
+    value = "arn:aws:acm:ap-south-2:058264194719:certificate/442d0a9c-5bb3-43ba-8ad2-27e53a40f0f6"
   }
 
   set {

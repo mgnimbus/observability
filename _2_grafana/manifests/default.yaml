@@ -280,7 +280,7 @@ ingress:
     alb.ingress.kubernetes.io/unhealthy-threshold-count: "2"
     #ssl
     alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80}, {"HTTPS": 443}]'
-    alb.ingress.kubernetes.io/certificate-arn: arn:aws:acm:us-east-1:058264194719:certificate/923313dc-6785-401f-b73c-1fd7e134a497
+    alb.ingress.kubernetes.io/certificate-arn: arn:aws:acm:ap-south-2:058264194719:certificate/923313dc-6785-401f-b73c-1fd7e134a497
     alb.ingress.kubernetes.io/ssl-policy: ELBSecurityPolicy-TLS-1-1-2017-01
     alb.ingress.kubernetes.io/ssl-redirect: "443"
 
@@ -459,7 +459,7 @@ adminPassword: gowthamm
 ## same oidc eks provider as noted before (same as the existing line)
 ## also, replace NAMESPACE and prometheus-operator-grafana with the service account namespace and name
 ##
-##  "oidc.eks.us-east-1.amazonaws.com/id/XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX:sub": "system:serviceaccount:NAMESPACE:prometheus-operator-grafana",
+##  "oidc.eks.ap-south-2.amazonaws.com/id/XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX:sub": "system:serviceaccount:NAMESPACE:prometheus-operator-grafana",
 ##
 ## 3. attach a policy to the role, you can use a built in policy called CloudWatchReadOnlyAccess
 ## 4. use the following env: (replace 123456789000 and iam-role-name-here with your aws account number and role name)
@@ -467,7 +467,7 @@ adminPassword: gowthamm
 ## env:
 ##   AWS_ROLE_ARN: arn:aws:iam::123456789000:role/iam-role-name-here
 ##   AWS_WEB_IDENTITY_TOKEN_FILE: /var/run/secrets/eks.amazonaws.com/serviceaccount/token
-##   AWS_REGION: us-east-1
+##   AWS_REGION: ap-south-2
 ##
 ## 5. uncomment the EKS section in extraSecretMounts: below
 ## 6. uncomment the annotation section in the serviceAccount: above
@@ -604,38 +604,38 @@ plugins:
 ## Configure grafana datasources
 ## ref: http://docs.grafana.org/administration/provisioning/#datasources
 ##
-datasources:
-  datasources.yaml:
-    apiVersion: 1
-    # -- Datasources linked to the Grafana instance. Override if you disable any components.
-    datasources:
-      # https://grafana.com/docs/grafana/latest/datasources/loki/#provision-the-loki-data-source
-      - name: Loki
-        uid: loki
-        type: loki
-        url: http://{{ .Release.Name }}-loki-gateway
-        isDefault: false
-      # https://grafana.com/docs/grafana/latest/datasources/prometheus/#provision-the-data-source
-      - name: Mimir
-        uid: prom
-        type: prometheus
-        url: http://{{ .Release.Name }}-mimir-nginx/prometheus
-        isDefault: true
-      # https://grafana.com/docs/grafana/latest/datasources/tempo/configure-tempo-data-source/#provision-the-data-source
-      - name: Tempo
-        uid: tempo
-        type: tempo
-        url: http://{{ .Release.Name }}-tempo-query-frontend:3100
-        isDefault: false
-        jsonData:
-          tracesToLogsV2:
-            datasourceUid: loki
-          lokiSearch:
-            datasourceUid: loki
-          tracesToMetrics:
-            datasourceUid: prom
-          serviceMap:
-            datasourceUid: prom
+# datasources:
+#   datasources.yaml:
+#     apiVersion: 1
+#     # -- Datasources linked to the Grafana instance. Override if you disable any components.
+#     datasources:
+#       # https://grafana.com/docs/grafana/latest/datasources/loki/#provision-the-loki-data-source
+#       - name: Loki
+#         uid: loki
+#         type: loki
+#         url: http://{{ .Release.Name }}-loki-gateway
+#         isDefault: false
+#       # https://grafana.com/docs/grafana/latest/datasources/prometheus/#provision-the-data-source
+#       - name: Mimir
+#         uid: prom
+#         type: prometheus
+#         url: http://{{ .Release.Name }}-mimir-nginx/prometheus
+#         isDefault: true
+#       # https://grafana.com/docs/grafana/latest/datasources/tempo/configure-tempo-data-source/#provision-the-data-source
+#       - name: Tempo
+#         uid: tempo
+#         type: tempo
+#         url: http://{{ .Release.Name }}-tempo-query-frontend:3100
+#         isDefault: false
+#         jsonData:
+#           tracesToLogsV2:
+#             datasourceUid: loki
+#           lokiSearch:
+#             datasourceUid: loki
+#           tracesToMetrics:
+#             datasourceUid: prom
+#           serviceMap:
+#             datasourceUid: prom
 
 ## Configure grafana alerting (can be templated)
 ## ref: http://docs.grafana.org/administration/provisioning/#alerting

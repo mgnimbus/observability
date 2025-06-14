@@ -46,8 +46,9 @@ module "eks" {
   authentication_mode                      = "API"
   eks_managed_node_groups = {
     obsrv = {
-      ami_type       = "BOTTLEROCKET_x86_64"
-      instance_types = ["t3a.large"]
+      ami_type       = "BOTTLEROCKET_ARM_64"
+      instance_types = ["t4g.large", "m6g.large", "m7g.large", "m8g.large", "m6gd.large", "m8g.large"]
+      capacity_type  = "SPOT"
       subnet_ids     = module.vpc.private_subnets
 
       min_size     = 2

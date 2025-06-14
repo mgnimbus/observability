@@ -68,9 +68,9 @@
 
 # aws_db_instance.default:
 # resource "aws_db_instance" "default" {
-#     address                               = "grafanadb.cla6qgm8wr69.us-east-1.rds.amazonaws.com"
+#     address                               = "grafanadb.cla6qgm8wr69.ap-south-2.rds.amazonaws.com"
 #     allocated_storage                     = 10
-#     arn                                   = "arn:aws:rds:us-east-1:058264194719:db:grafanadb"
+#     arn                                   = "arn:aws:rds:ap-south-2:058264194719:db:grafanadb"
 #     auto_minor_version_upgrade            = true
 #     availability_zone                     = "us-east-1a"
 #     backup_retention_period               = 0
@@ -86,7 +86,7 @@
 #     deletion_protection                   = false
 #     domain_dns_ips                        = []
 #     enabled_cloudwatch_logs_exports       = []
-#     endpoint                              = "grafanadb.cla6qgm8wr69.us-east-1.rds.amazonaws.com:5432"
+#     endpoint                              = "grafanadb.cla6qgm8wr69.ap-south-2.rds.amazonaws.com:5432"
 #     engine                                = "postgres"
 #     engine_version                        = "16.2"
 #     engine_version_actual                 = "16.2"
@@ -96,7 +96,7 @@
 #     identifier                            = "grafanadb"
 #     instance_class                        = "db.t3.micro"
 #     iops                                  = 0
-#     kms_key_id                            = "arn:aws:kms:us-east-1:058264194719:key/3f2778b6-e18d-4756-ac86-8f9fe8f92c87"
+#     kms_key_id                            = "arn:aws:kms:ap-south-2:058264194719:key/3f2778b6-e18d-4756-ac86-8f9fe8f92c87"
 #     license_model                         = "postgresql-license"
 #     listener_endpoint                     = []
 #     maintenance_window                    = "wed:06:18-wed:06:48"

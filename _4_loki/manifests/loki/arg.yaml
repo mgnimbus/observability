@@ -126,7 +126,7 @@ loki:
         type: s3
         s3:
           insecure: false
-          region: us-east-1
+          region: ap-south-2
           storage_class: INTELLIGENT_TIERING
     runtime_config:
       file: /etc/loki/runtime-config/runtime-config.yaml

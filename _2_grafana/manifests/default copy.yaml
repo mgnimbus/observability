@@ -456,7 +456,7 @@ adminPassword: gowthamm
 ## same oidc eks provider as noted before (same as the existing line)
 ## also, replace NAMESPACE and prometheus-operator-grafana with the service account namespace and name
 ##
-##  "oidc.eks.us-east-1.amazonaws.com/id/XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX:sub": "system:serviceaccount:NAMESPACE:prometheus-operator-grafana",
+##  "oidc.eks.ap-south-2.amazonaws.com/id/XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX:sub": "system:serviceaccount:NAMESPACE:prometheus-operator-grafana",
 ##
 ## 3. attach a policy to the role, you can use a built in policy called CloudWatchReadOnlyAccess
 ## 4. use the following env: (replace 123456789000 and iam-role-name-here with your aws account number and role name)
@@ -464,7 +464,7 @@ adminPassword: gowthamm
 ## env:
 ##   AWS_ROLE_ARN: arn:aws:iam::123456789000:role/iam-role-name-here
 ##   AWS_WEB_IDENTITY_TOKEN_FILE: /var/run/secrets/eks.amazonaws.com/serviceaccount/token
-##   AWS_REGION: us-east-1
+##   AWS_REGION: ap-south-2
 ##
 ## 5. uncomment the EKS section in extraSecretMounts: below
 ## 6. uncomment the annotation section in the serviceAccount: above

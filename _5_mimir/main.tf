@@ -10,6 +10,7 @@ resource "helm_release" "mimir" {
     templatefile("${path.module}/manifests/default.yaml", {
       role_arn             = aws_iam_role.mimir_irsa_s3_role.arn
       service_account_name = var.service_account_name
+      mimir_chunks_bucket  = data.terraform_remote_state.observability_buckets.outputs.observability_bucket_names["mimir-chunks"]
       }
   )]
 

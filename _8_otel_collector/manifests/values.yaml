@@ -106,21 +106,20 @@ config:
   service:
     extensions: [health_check, headers_setter]
     telemetry:
-      metrics:
-        address: 0.0.0.0:8888
-        level: detailed
+      metrics: {}
+      logs: {}
     pipelines:
-      # metrics:
-      #   receivers: [otlp]
-      #   processors: [batch, resource, attributes]
-      #   exporters: [prometheusremotewrite]
+      metrics:
+        receivers: [otlp]
+        processors: [resource, attributes, batch]
+        exporters: [prometheusremotewrite]
       # # traces:
       #   receivers: [otlp]
-      #   processors: [batch, resource, attributes]
+      #   processors: [resource, attributes, batch]
       #   exporters: [otlp]
       logs:
         receivers: [otlp]
-        processors: [batch, resource, attributes]
+        processors: [resource, attributes, batch]
         exporters: [otlphttp/loki]
 
 image:

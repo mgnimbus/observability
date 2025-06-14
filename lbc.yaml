@@ -43,7 +43,7 @@ readinessProbe:
   initialDelaySeconds: 10
   successThreshold: 1
   timeoutSeconds: 10
-region: us-east-1
+region: ap-south-2
 replicaCount: 2
 resources: null
 revisionHistoryLimit: 10

@@ -155,7 +155,7 @@ spec:
 
     extensions:
       sigv4auth:
-        region: "us-east-1"
+        region: "ap-south-2"
         service: "aps"
       headers_setter:
         headers:

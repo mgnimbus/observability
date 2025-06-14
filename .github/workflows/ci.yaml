@@ -8,54 +8,53 @@ jobs:
     name: "EKS Build"
     runs-on: ubuntu-latest
     defaults:
-     run:
-       shell: bash       
-       working-directory: ./_1_eks
-    
+      run:
+        shell: bash
+        working-directory: ./_1_eks
+
     steps:
-    - name: Checkout the repository to the runner
-      uses: actions/checkout@v4
+      - name: Checkout the repository to the runner
+        uses: actions/checkout@v4
 
-    - name: Configure AWS Credentials
-      uses: aws-actions/configure-aws-credentials@v4
-      with:
-        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-        aws-region: us-east-1
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ap-south-2
 
-    - name: Test configuration of AWS CLI
-      run: |
-        aws --version
-        aws configure list | grep region | awk '{print $2}'
+      - name: Test configuration of AWS CLI
+        run: |
+          aws --version
+          aws configure list | grep region | awk '{print $2}'
 
-    - name: Setup Terraform with specified version on the runner
-      uses: hashicorp/setup-terraform@v3
-      with:
-        terraform_version: 1.4.4
+      - name: Setup Terraform with specified version on the runner
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.4.4
 
-    - name: Install tfsec
-      run: curl -L https://github.com/liamg/tfsec/releases/latest/download/tfsec-linux-amd64 -o tfsec && chmod +x tfsec && sudo mv tfsec /usr/local/bin/
+      - name: Install tfsec
+        run: curl -L https://github.com/liamg/tfsec/releases/latest/download/tfsec-linux-amd64 -o tfsec && chmod +x tfsec && sudo mv tfsec /usr/local/bin/
 
-    - name: Install checkov
-      run: pip install checkov    
+      - name: Install checkov
+        run: pip install checkov
 
-    - name: Terraform Init
-      run: terraform init 
+      - name: Terraform Init
+        run: terraform init
 
-    - name: Terraform Format Check
-      id: fmt
-      run: terraform fmt -check=true
-      continue-on-error: true
+      - name: Terraform Format Check
+        id: fmt
+        run: terraform fmt -check=true
+        continue-on-error: true
 
-    - name: Terraform Validate
-      id: validate
-      run: terraform validate -no-color
+      - name: Terraform Validate
+        id: validate
+        run: terraform validate -no-color
 
-    - name: Run tfsec
-      id: tfsec
-      run: tfsec --tfvars-file 'terraform.auto.tfvars' --soft-fail=true
+      - name: Run tfsec
+        id: tfsec
+        run: tfsec --tfvars-file 'terraform.auto.tfvars' --soft-fail=true
 
-    - name: Run checkov
-      id: checkov
-      run: checkov -d . --quiet --soft-fail
-
+      - name: Run checkov
+        id: checkov
+        run: checkov -d . --quiet --soft-fail

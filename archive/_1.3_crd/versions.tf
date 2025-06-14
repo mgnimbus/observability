@@ -1,9 +1,9 @@
 terraform {
   backend "s3" {
-    bucket         = "observability-tfstate-bucky"
-    region         = "us-east-1"
+    bucket         = "observability-tfstate-bucky-ind"
+    region         = "ap-south-2"
     key            = "crds/terraform.tfstate"
-    dynamodb_table = "nimbus-state-lock"
+    dynamodb_table = "nimbus-state-lock-ind"
     encrypt        = true
   }
   required_providers {
@@ -13,7 +13,7 @@ terraform {
     }
     aws = {
       source  = "hashicorp/aws"
-      version = "5.53.0"
+      version = "~> 5.0"
     }
     helm = {
       source  = "hashicorp/helm"

@@ -1,9 +1,9 @@
 terraform {
   backend "s3" {
-    bucket         = "observability-tfstate-bucky"
-    region         = "us-east-1"
+    bucket         = "observability-tfstate-bucky-ind"
+    region         = "ap-south-2"
     key            = "eks_module_new/terraform.tfstate"
-    dynamodb_table = "nimbus-state-lock"
+    dynamodb_table = "nimbus-state-lock-ind"
     encrypt        = true
   }
   required_providers {
@@ -23,7 +23,7 @@ terraform {
 }
 
 provider "aws" {
-  region = "us-east-1"
+  region = "ap-south-2"
 }
 
 provider "helm" {

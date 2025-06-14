@@ -1,7 +1,7 @@
 variable "region" {
   description = "Region in which the resources are deployed"
   type        = string
-  default     = "us-east-1"
+  default     = "ap-south-2"
 }
 
 variable "account_id" {
@@ -38,4 +38,9 @@ variable "dns_service_account_name" {
 variable "dns_namespace" {
   description = "Namespace in which the resources are deployed"
   type        = string
+}
+
+variable "privata_zone_name" {
+  description = "Name of the private zone"
+  default     = "observability"
 }

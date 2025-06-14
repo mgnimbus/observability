@@ -1,39 +1,39 @@
-resource "kubernetes_namespace" "external_dns" {
-  metadata {
-    name = var.dns_namespace
-  }
-}
+# resource "kubernetes_namespace" "external_dns" {
+#   metadata {
+#     name = var.dns_namespace
+#   }
+# }
 
-resource "kubernetes_service_account" "external_dns" {
-  metadata {
-    name      = var.dns_service_account_name
-    namespace = kubernetes_namespace.external_dns.metadata[0].name
-    annotations = {
-      "eks.amazonaws.com/role-arn"     = aws_iam_role.irsa_r53_role.arn,
-      "meta.helm.sh/release-namespace" = kubernetes_namespace.external_dns.metadata[0].name
-      "meta.helm.sh/release-name"      = "external-dns"
-    }
-    labels = {
-      "app.kubernetes.io/managed-by" = "Helm"
-    }
-  }
-}
-resource "helm_release" "external_dns" {
-  name = "external-dns"
+# resource "kubernetes_service_account" "external_dns" {
+#   metadata {
+#     name      = var.dns_service_account_name
+#     namespace = kubernetes_namespace.external_dns.metadata[0].name
+#     annotations = {
+#       "eks.amazonaws.com/role-arn"     = aws_iam_role.irsa_r53_role.arn,
+#       "meta.helm.sh/release-namespace" = kubernetes_namespace.external_dns.metadata[0].name
+#       "meta.helm.sh/release-name"      = "external-dns"
+#     }
+#     labels = {
+#       "app.kubernetes.io/managed-by" = "Helm"
+#     }
+#   }
+# }
+# resource "helm_release" "external_dns" {
+#   name = "external-dns"
 
-  repository       = "https://kubernetes-sigs.github.io/external-dns/"
-  chart            = "external-dns"
-  create_namespace = false
-  namespace        = kubernetes_namespace.external_dns.metadata[0].name
+#   repository       = "https://kubernetes-sigs.github.io/external-dns/"
+#   chart            = "external-dns"
+#   create_namespace = false
+#   namespace        = kubernetes_namespace.external_dns.metadata[0].name
 
-  values = [
-    templatefile("${path.module}/manifests/dns.yaml", {
-      region = var.aws_region
-      }
-  )]
-  depends_on = [kubernetes_service_account.external_dns]
-  #depends_on = [kubernetes_service_account.external_dns, module.private_zones]
-}
+#   values = [
+#     templatefile("${path.module}/manifests/dns.yaml", {
+#       region = var.aws_region
+#       }
+#   )]
+#   depends_on = [kubernetes_service_account.external_dns]
+#   #depends_on = [kubernetes_service_account.external_dns, module.private_zones]
+# }
 
 # k create ns external-dns
 # kubectl create serviceaccount "external-dns" --namespace external-dns
