@@ -1,0 +1,1530 @@
+mode: "daemonset"
+
+image:
+  repository: dockerhub-remote.dock.merck.com/otel/opentelemetry-collector-contrib
+
+serviceAccount:
+  name: ${service_account}
+
+  create: false
+
+podAnnotations:
+  prometheus.io/path: /metrics
+
+  prometheus.io/port: "8888"
+
+  prometheus.io/scrape: "true"
+
+tolerations:
+  - key: "mimir"
+
+    operator: "Equal"
+
+    value: "true"
+
+    effect: "NoSchedule"
+
+  - key: "loki"
+
+    operator: "Equal"
+
+    value: "true"
+
+    effect: "NoSchedule"
+
+  - key: "tempo"
+
+    operator: "Equal"
+
+    value: "true"
+
+    effect: "NoSchedule"
+
+  - key: "grafana"
+
+    operator: "Equal"
+
+    value: "true"
+
+    effect: "NoSchedule"
+
+  - key: "otel"
+
+    operator: "Equal"
+
+    value: "true"
+
+    effect: "NoSchedule"
+
+  - key: "nobl9agents"
+
+    operator: "Equal"
+
+    value: "true"
+
+    effect: "NoSchedule"
+
+presets:
+  logsCollection:
+    enabled: true
+
+    includeCollectorLogs: true
+
+  hostMetrics:
+    enabled: false
+
+  kubernetesAttributes:
+    enabled: true
+
+    extractAllPodLabels: true
+
+    extractAllPodAnnotations: true
+
+  kubeletMetrics:
+    enabled: false
+
+  kubernetesEvents:
+    enabled: true
+
+  clusterMetrics:
+    enabled: false
+
+configMap:
+  create: true
+
+extraVolumeMounts:
+  - name: varlog
+
+    mountPath: /host/var/log
+
+    readOnly: true
+
+  - name: optlog
+
+    mountPath: /host/opt/dctm
+
+    readOnly: true
+
+  - name: merck-trusted-ca
+
+    mountPath: /etc/ssl/certs
+
+    readOnly: true
+
+extraVolumes:
+  - hostPath:
+      path: /var/log
+
+    name: varlog
+
+  - hostPath:
+      path: /opt/dctm
+
+    name: optlog
+
+  - configMap:
+      name: merck-trusted-ca
+
+    name: merck-trusted-ca
+
+config:
+  receivers:
+    jaeger: null
+
+    zipkin: null
+
+    k8s_events:
+
+    filelog/k8s_pods:
+      include:
+        # - /var/log/pods/*/*/*.log
+
+        # - /host/var/log/syslog
+
+        - /host/var/log/messages
+
+        - /host/var/log/*.log
+
+      exclude:
+        # - /var/log/pods/*meta*/**
+
+        # - /var/log/pods/*loki*/**
+
+        # - /var/log/pods/*opentelemetry*/**
+
+        - /var/log/pods/*nginx*/**
+
+        - /host/var/log/falcon-*/**
+
+      start_at: end
+
+      include_file_path: true
+
+      include_file_name: true
+
+      operators:
+        # Find out which format is used by kubernetes
+
+        - type: router
+
+          id: get-format
+
+          routes:
+            - output: docker-runtime
+
+              expr: 'body matches "^\\{"'
+
+            - output: crio-runtime
+
+              expr: 'body matches "^[^ Z]+ "'
+
+            - output: containerd-runtime
+
+              expr: 'body matches "^[^ Z]+Z"'
+
+        - type: add
+
+          id: docker-runtime
+
+          field: attributes["container.runtime"]
+
+          value: "docker"
+
+          output: parser-docker
+
+        - type: add
+
+          id: crio-runtime
+
+          field: attributes["container.runtime"]
+
+          value: "crio"
+
+          output: parser-crio
+
+        - type: add
+
+          id: containerd-runtime
+
+          field: attributes["container.runtime"]
+
+          value: "containerd"
+
+          output: parser-containerd
+
+        # Parse CRI-O format
+
+        - type: regex_parser
+
+          id: parser-crio
+
+          regex: "^(?P<time>[^ Z]+) (?P<stream>stdout|stderr) (?P<logtag>[^ ]*) ?(?P<log>.*)$"
+
+          output: extract_metadata_from_filepath
+
+          timestamp:
+            parse_from: attributes.time
+
+            layout_type: gotime
+
+            layout: "2006-01-02T15:04:05.999999999Z07:00"
+
+        # Parse CRI-Containerd format
+
+        - type: regex_parser
+
+          id: parser-containerd
+
+          regex: "^(?P<time>[^ Z]+Z) (?P<stream>stdout|stderr) (?P<logtag>[^ ]*) ?(?P<log>.*)$"
+
+          output: extract_metadata_from_filepath
+
+          timestamp:
+            parse_from: attributes.time
+
+            layout: "%Y-%m-%dT%H:%M:%S.%LZ"
+
+        # Parse Docker format
+
+        - type: json_parser
+
+          id: parser-docker
+
+          output: extract_metadata_from_filepath
+
+          timestamp:
+            parse_from: attributes.time
+
+            layout: "%Y-%m-%dT%H:%M:%S.%LZ"
+
+        - type: move
+
+          from: attributes.log
+
+          to: body
+
+        # Extract metadata from file path
+
+        - type: regex_parser
+
+          id: extract_metadata_from_filepath
+
+          regex: '^.*\/(?P<namespace>[^_]+)_(?P<pod_name>[^_]+)_(?P<uid>[a-f0-9\-]{36})\/(?P<container_name>[^\._]+)\/(?P<restart_count>\d+)\.log$'
+
+          parse_from: attributes["log.file.path"]
+
+        - type: filter
+
+          id: junk_filter
+
+          expr: 'attributes.container_name matches "^loki-(canary).*$"'
+
+        # Rename attributes
+
+        - type: move
+
+          from: attributes.container_name
+
+          to: resource["container"]
+
+        - type: move
+
+          from: attributes.stream
+
+          to: resource["stream"]
+
+        - type: move
+
+          from: attributes.namespace
+
+          to: resource["namespace"]
+
+        - type: move
+
+          from: attributes.pod_name
+
+          to: resource["pod"]
+
+        - type: move
+
+          from: attributes.restart_count
+
+          to: attributes["pod_restart_count"]
+
+        - type: move
+
+          from: attributes.uid
+
+          to: attributes["pod_uid"]
+
+        - type: json_parser
+
+          id: extract-level-from-json-log
+
+          parse_from: attributes["log"]
+
+          output: parser-level
+
+          if: 'attributes["log"] matches "^{.*}$"'
+
+        - type: regex_parser
+
+          id: parser-level
+
+          regex: "^.*level=(?P<level>\\w+).*msg=.*$"
+
+          parse_from: body
+
+          if: 'body matches ".*level=.* msg.*"'
+
+        - type: severity_parser
+
+          parse_from: attributes["level"]
+
+          if: 'attributes["level"] != nil'
+
+        - type: move
+
+          from: attributes["log.file.path"]
+
+          to: resource["log.file.path"]
+
+          if: 'attributes["log.file.path"] != nil'
+
+        - type: move
+
+          from: attributes["log.file.name"]
+
+          to: resource["log.file.name"]
+
+          if: 'attributes["log.file.name"] != nil'
+
+        - type: move
+
+          from: attributes.level
+
+          to: resource["level"]
+
+          if: 'attributes["level"] != nil'
+
+    filelog/custom:
+      include:
+        - /host/opt/dctm/dba/log/MEDSDEV1.log
+
+        - /host/opt/dctm/tomcat10.1.30/logs/bpm.log
+
+        - /host/opt/dctm/tomcat10.1.30/logs/otdsauth.log
+
+        - /host/opt/dctm/webapps/D2/logs/D2-log4j.log
+
+      exclude:
+        - /var/log/pods/*nginx*/**
+
+        - /host/var/log/falcon-*/**
+
+      start_at: end
+
+      include_file_path: true
+
+      include_file_name: true
+
+      operators:
+        - type: router
+
+          id: log-router
+
+          routes:
+            - output: medsdev-log
+
+              expr: 'attributes["log.file.path"] matches ".*MEDSDEV1.log$"'
+
+            - output: bpm-log
+
+              expr: 'body matches "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2},\\d{3} \\w+ \\[.*?\\] \\[.*?\\] - .*"'
+
+            - output: otdsauth-log
+
+              expr: 'body matches "^\\d{1,2} \\w+ \\d{4} \\d{2}:\\d{2}:\\d{2},\\d{3} \\w+ \\[.*?\\] .*? - .*"'
+
+            - output: log4j-log
+
+              expr: 'body matches "^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}\\.\\d{3} \\[\\w+\\] \\[.*?\\] .*?: .*"'
+
+            # - output: log4j-log
+
+            #   expr: 'attributes["log.file.path"] matches ".*D2-log4j.log$"'
+
+        - type: recombine
+
+          id: multiline-combiner
+
+          combine_field: body
+
+          is_first_entry: 'body matches "^\\d{4}-\\d{2}-\\d{2}T?\\d{2}:\\d{2}:\\d{2}"'
+
+          timeout: 5s
+
+        - type: regex_parser
+
+          id: medsdev-log
+
+          regex: '^(?P<timestamp>\S+)\t(?P<thread>\S+)\t(?P<session_id>\S+)\t(?P<message>.+)$'
+
+          timestamp:
+            parse_from: attributes.timestamp
+
+            layout: "%Y-%m-%dT%H:%M:%S.%f"
+
+          parse_to: attributes
+
+        - type: regex_parser
+
+          id: bpm-log
+
+          regex: '^(?P<timestamp>\S+ \S+) (?P<severity>\w+) \[(?P<thread>[^\]]+)\] \[(?P<class>[^\]]+)\] - (?P<message>.+)$'
+
+          timestamp:
+            parse_from: attributes.timestamp
+
+            layout: "%Y-%m-%dT%H:%M:%S,%L"
+
+          parse_to: attributes
+
+        - type: regex_parser
+
+          id: otdsauth-log
+
+          regex: '^(?P<timestamp>\d{1,2} \w+ \d{4} \d{2}:\d{2}:\d{2},\d{3}) (?P<severity>\w+) \[(?P<thread>[^\]]+)\] (?P<class>[^ ]+) - (?P<message>.+)$'
+
+          timestamp:
+            parse_from: attributes.timestamp
+
+            layout: "%d %b %Y %H:%M:%S,%L"
+
+          parse_to: attributes
+
+        - type: regex_parser
+
+          id: log4j-log
+
+          regex: '^(?P<timestamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3}) \[(?P<severity>\w+) ?\] \[(?P<thread>[^\]]+)\] (?P<class>[^:]+): (?P<message>.+)$'
+
+          timestamp:
+            parse_from: attributes.timestamp
+
+            layout: "%Y-%m-%d %H:%M:%S.%L"
+
+          parse_to: attributes
+
+        - type: severity_parser
+
+          parse_from: attributes.severity
+
+        - type: move
+
+          from: attributes.message
+
+          to: body
+
+        - type: move
+
+          from: attributes["log.file.path"]
+
+          to: resource["log.file.path"]
+
+          if: 'attributes["log.file.path"] != nil'
+
+        - type: move
+
+          from: attributes["log.file.name"]
+
+          to: resource["log.file.name"]
+
+          if: 'attributes["log.file.name"] != nil'
+
+  processors:
+    k8sattributes:
+      pod_association:
+        - sources:
+            - from: resource_attribute
+
+              name: k8s.pod.ip
+
+        - sources:
+            - from: resource_attribute
+
+              name: k8s.pod.uid
+
+        - sources:
+            - from: connection
+
+        - sources:
+            - from: resource_attribute
+
+              name: k8s.pod.name
+
+            - from: resource_attribute
+
+              name: k8s.namespace.name
+
+      extract:
+        metadata:
+          - k8s.pod.name
+
+          - k8s.namespace.name
+
+    resource:
+      attributes:
+        - action: upsert
+
+          key: k8s.cluster.id
+
+          value: ${eks_cluster}
+
+        - action: upsert
+
+          key: otel.collector.id
+
+          value: ${collector_id}-logs
+
+        - action: upsert
+
+          key: argus.app.id
+
+          value: ${argus_app_id}
+
+        - action: upsert
+
+          key: argus.app.env
+
+          value: ${argus_app_env}
+
+        - action: upsert # This label is needed if logs needs to use the otlhttp exporter. If to use the loki exporter this label can be removed
+
+          key: loki.exporter
+
+          value: otlphttp
+
+        - action: upsert
+
+          key: argus.product.id
+
+          value: ${argus_product_id}
+
+        - action: upsert
+
+          key: argus.app.service
+
+          value: ${argus_app_service}
+
+    resourcedetection:
+      detectors: [env, system, ec2] # include ec2 for AWS, gce for GCP and azure for Azure.
+
+      timeout: 2s
+
+      override: false
+
+    filter/noise:
+      logs:
+        log_record:
+          - 'IsMatch(body, ".*debug.*")'
+
+    batch:
+      send_batch_max_size: 1000
+
+      timeout: 10s
+
+      send_batch_size: 800
+
+  extensions:
+    k8s_observer:
+      node: $${K8S_NODE_NAME}
+
+      observe_pods: true
+
+      observe_nodes: true
+
+    health_check: {}
+
+    headers_setter:
+      headers:
+        - action: upsert
+
+          key: X-Scope-OrgId
+
+          from_context: X-Scope-OrgId
+
+  exporters:
+    otlp:
+      endpoint: "https://otel.${argus_domain_name}:443"
+
+      headers:
+        X-Scope-OrgId: ${app_ci_shortname}
+
+      compression: snappy
+
+      tls:
+        insecure: false
+
+        insecure_skip_verify: true
+
+  service:
+    telemetry:
+      metrics:
+        level: detailed
+
+      logs:
+        level: WARN
+
+    extensions: [health_check, headers_setter]
+
+    pipelines:
+      logs:
+        receivers: [filelog/k8s_pods, filelog/custom, k8s_events]
+
+        processors:
+          [k8sattributes, resource, resourcedetection, filter/noise, batch]
+
+        exporters: [otlp]
+
+      metrics: null
+
+      traces: null
+
+ports:
+  otlp:
+    enabled: true
+
+  otlp-http:
+    enabled: true
+
+  jaeger-compact:
+    enabled: false
+
+  jaeger-thrift:
+    enabled: false
+
+  jaeger-grpc:
+    enabled: false
+
+  zipkin:
+    enabled: false
+
+  metrics:
+    enabled: true
+
+    containerPort: 8888
+
+    servicePort: 8888
+
+    protocol: TCP
+
+# Resource limits & requests. Update according to your own use case as these values might be too low for a typical deployment.
+
+resources: {}
+# resources:
+
+#   requests:
+
+#     cpu: 250m
+
+#     memory: 256Mi
+
+#   limits:
+
+#     cpu: 500m
+
+#     memory: 512Mi
+mode: "daemonset"
+
+
+
+image:
+
+  repository: dockerhub-remote.dock.merck.com/otel/opentelemetry-collector-contrib
+
+serviceAccount:
+
+  name: ${service_account}
+
+  create: false
+
+
+
+podAnnotations:
+
+  prometheus.io/path: /metrics
+
+  prometheus.io/port: "8888"
+
+  prometheus.io/scrape: "true"
+
+
+
+tolerations:
+
+  - key: "mimir"
+
+    operator: "Equal"
+
+    value: "true"
+
+    effect: "NoSchedule"
+
+  - key: "loki"
+
+    operator: "Equal"
+
+    value: "true"
+
+    effect: "NoSchedule"
+
+  - key: "tempo"
+
+    operator: "Equal"
+
+    value: "true"
+
+    effect: "NoSchedule"
+
+  - key: "grafana"
+
+    operator: "Equal"
+
+    value: "true"
+
+    effect: "NoSchedule"
+
+  - key: "otel"
+
+    operator: "Equal"
+
+    value: "true"
+
+    effect: "NoSchedule"
+
+  - key: "nobl9agents"
+
+    operator: "Equal"
+
+    value: "true"
+
+    effect: "NoSchedule"
+
+
+
+presets:
+
+  logsCollection:
+
+    enabled: true
+
+    includeCollectorLogs: true
+
+  hostMetrics:
+
+    enabled: false
+
+  kubernetesAttributes:
+
+    enabled: true
+
+    extractAllPodLabels: true
+
+    extractAllPodAnnotations: true
+
+  kubeletMetrics:
+
+    enabled: false
+
+  kubernetesEvents:
+
+    enabled: true
+
+  clusterMetrics:
+
+    enabled: false
+
+configMap:
+
+  create: true
+
+
+
+extraVolumeMounts:
+
+  - name: varlog
+
+    mountPath: /host/var/log
+
+    readOnly: true
+
+  - name: optlog
+
+    mountPath: /host/opt/dctm
+
+    readOnly: true     
+
+  - name: merck-trusted-ca
+
+    mountPath: /etc/ssl/certs
+
+    readOnly: true
+
+
+
+extraVolumes:
+
+  - hostPath:
+
+      path: /var/log
+
+    name: varlog
+
+  - hostPath:
+
+      path: /opt/dctm
+
+    name: optlog    
+
+  - configMap:
+
+      name: merck-trusted-ca
+
+    name: merck-trusted-ca
+
+
+
+config:
+
+  receivers:
+
+    jaeger: null
+
+    zipkin: null
+
+    k8s_events:
+
+    filelog/k8s_pods:
+
+      include:
+
+        # - /var/log/pods/*/*/*.log
+
+        # - /host/var/log/syslog
+
+        - /host/var/log/messages
+
+        - /host/var/log/*.log
+
+      exclude:
+
+        # - /var/log/pods/*meta*/**
+
+        # - /var/log/pods/*loki*/**
+
+        # - /var/log/pods/*opentelemetry*/**
+
+        - /var/log/pods/*nginx*/**
+
+        - /host/var/log/falcon-*/**
+
+      start_at: end
+
+      include_file_path: true
+
+      include_file_name: true
+
+      operators:
+
+        # Find out which format is used by kubernetes
+
+        - type: router
+
+          id: get-format
+
+          routes:
+
+            - output: docker-runtime
+
+              expr: 'body matches "^\\{"'
+
+            - output: crio-runtime
+
+              expr: 'body matches "^[^ Z]+ "'
+
+            - output: containerd-runtime
+
+              expr: 'body matches "^[^ Z]+Z"'
+
+        - type: add
+
+          id: docker-runtime
+
+          field: attributes["container.runtime"]
+
+          value: "docker"
+
+          output: parser-docker
+
+        - type: add
+
+          id: crio-runtime
+
+          field: attributes["container.runtime"]
+
+          value: "crio"
+
+          output: parser-crio
+
+        - type: add
+
+          id: containerd-runtime
+
+          field: attributes["container.runtime"]
+
+          value: "containerd"
+
+          output: parser-containerd    
+
+
+
+        # Parse CRI-O format
+
+        - type: regex_parser
+
+          id: parser-crio
+
+          regex: "^(?P<time>[^ Z]+) (?P<stream>stdout|stderr) (?P<logtag>[^ ]*) ?(?P<log>.*)$"
+
+          output: extract_metadata_from_filepath
+
+          timestamp:
+
+            parse_from: attributes.time
+
+            layout_type: gotime
+
+            layout: "2006-01-02T15:04:05.999999999Z07:00"
+
+
+
+        # Parse CRI-Containerd format
+
+        - type: regex_parser
+
+          id: parser-containerd
+
+          regex: "^(?P<time>[^ Z]+Z) (?P<stream>stdout|stderr) (?P<logtag>[^ ]*) ?(?P<log>.*)$"
+
+          output: extract_metadata_from_filepath
+
+          timestamp:
+
+            parse_from: attributes.time
+
+            layout: "%Y-%m-%dT%H:%M:%S.%LZ"
+
+
+
+        # Parse Docker format
+
+        - type: json_parser
+
+          id: parser-docker
+
+          output: extract_metadata_from_filepath
+
+          timestamp:
+
+            parse_from: attributes.time
+
+            layout: "%Y-%m-%dT%H:%M:%S.%LZ"
+
+
+
+        - type: move
+
+          from: attributes.log
+
+          to: body
+
+
+
+        # Extract metadata from file path
+
+        - type: regex_parser
+
+          id: extract_metadata_from_filepath
+
+          regex: '^.*\/(?P<namespace>[^_]+)_(?P<pod_name>[^_]+)_(?P<uid>[a-f0-9\-]{36})\/(?P<container_name>[^\._]+)\/(?P<restart_count>\d+)\.log$'
+
+          parse_from: attributes["log.file.path"]
+
+
+
+        - type: filter
+
+          id: junk_filter
+
+          expr: 'attributes.container_name matches "^loki-(canary).*$"'
+
+
+
+        # Rename attributes
+
+        - type: move
+
+          from: attributes.container_name
+
+          to: resource["container"]
+
+        - type: move
+
+          from: attributes.stream
+
+          to: resource["stream"]  
+
+        - type: move
+
+          from: attributes.namespace
+
+          to: resource["namespace"]
+
+        - type: move
+
+          from: attributes.pod_name
+
+          to: resource["pod"]
+
+        - type: move
+
+          from: attributes.restart_count
+
+          to: attributes["pod_restart_count"]
+
+        - type: move
+
+          from: attributes.uid
+
+          to: attributes["pod_uid"]
+
+
+
+        - type: json_parser
+
+          id: extract-level-from-json-log
+
+          parse_from: attributes["log"]
+
+          output: parser-level
+
+          if: 'attributes["log"] matches "^{.*}$"'
+
+
+
+        - type: regex_parser
+
+          id: parser-level
+
+          regex: "^.*level=(?P<level>\\w+).*msg=.*$"
+
+          parse_from: body
+
+          if: 'body matches ".*level=.* msg.*"'
+
+
+
+        - type: severity_parser
+
+          parse_from: attributes["level"]
+
+          if: 'attributes["level"] != nil'
+
+
+
+        - type: move
+
+          from: attributes["log.file.path"]
+
+          to: resource["log.file.path"]
+
+          if: 'attributes["log.file.path"] != nil'
+
+        - type: move
+
+          from: attributes["log.file.name"]
+
+          to: resource["log.file.name"]
+
+          if: 'attributes["log.file.name"] != nil' 
+
+        - type: move
+
+          from: attributes.level
+
+          to: resource["level"]
+
+          if: 'attributes["level"] != nil'
+
+    filelog/custom:
+
+      include:
+
+        - /host/opt/dctm/dba/log/MEDSDEV1.log
+
+        - /host/opt/dctm/tomcat10.1.30/logs/bpm.log
+
+        - /host/opt/dctm/tomcat10.1.30/logs/otdsauth.log
+
+        - /host/opt/dctm/webapps/D2/logs/D2-log4j.log
+
+      exclude:
+
+        - /var/log/pods/*nginx*/**
+
+        - /host/var/log/falcon-*/**
+
+      start_at: end
+
+      include_file_path: true
+
+      include_file_name: true
+
+      operators:
+
+        - type: router
+
+          id: log-router
+
+          routes:
+
+            - output: medsdev-log
+
+              expr: 'attributes["log.file.path"] matches ".*MEDSDEV1.log$"'
+
+            - output: bpm-log
+
+              expr: 'body matches "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2},\\d{3} \\w+ \\[.*?\\] \\[.*?\\] - .*"'
+
+            - output: otdsauth-log
+
+              expr: 'body matches "^\\d{1,2} \\w+ \\d{4} \\d{2}:\\d{2}:\\d{2},\\d{3} \\w+ \\[.*?\\] .*? - .*"'
+
+            - output: log4j-log
+
+              expr: 'body matches "^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}\\.\\d{3} \\[\\w+\\] \\[.*?\\] .*?: .*"'  
+
+            # - output: log4j-log
+
+            #   expr: 'attributes["log.file.path"] matches ".*D2-log4j.log$"'
+
+
+
+        - type: recombine
+
+          id: multiline-combiner
+
+          combine_field: body
+
+          is_first_entry: 'body matches "^\\d{4}-\\d{2}-\\d{2}T?\\d{2}:\\d{2}:\\d{2}"'
+
+          timeout: 5s
+
+
+
+        - type: regex_parser
+
+          id: medsdev-log
+
+          regex: '^(?P<timestamp>\S+)\t(?P<thread>\S+)\t(?P<session_id>\S+)\t(?P<message>.+)$'
+
+          timestamp:
+
+            parse_from: attributes.timestamp
+
+            layout: '%Y-%m-%dT%H:%M:%S.%f'
+
+          parse_to: attributes
+
+
+
+        - type: regex_parser
+
+          id: bpm-log
+
+          regex: '^(?P<timestamp>\S+ \S+) (?P<severity>\w+) \[(?P<thread>[^\]]+)\] \[(?P<class>[^\]]+)\] - (?P<message>.+)$'
+
+          timestamp:
+
+            parse_from: attributes.timestamp
+
+            layout: '%Y-%m-%dT%H:%M:%S,%L'
+
+          parse_to: attributes
+
+
+
+        - type: regex_parser
+
+          id: otdsauth-log
+
+          regex: '^(?P<timestamp>\d{1,2} \w+ \d{4} \d{2}:\d{2}:\d{2},\d{3}) (?P<severity>\w+) \[(?P<thread>[^\]]+)\] (?P<class>[^ ]+) - (?P<message>.+)$'
+
+          timestamp:
+
+            parse_from: attributes.timestamp
+
+            layout: '%d %b %Y %H:%M:%S,%L'
+
+          parse_to: attributes
+
+
+
+        - type: regex_parser
+
+          id: log4j-log
+
+          regex: '^(?P<timestamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3}) \[(?P<severity>\w+) ?\] \[(?P<thread>[^\]]+)\] (?P<class>[^:]+): (?P<message>.+)$'
+
+          timestamp:
+
+            parse_from: attributes.timestamp
+
+            layout: '%Y-%m-%d %H:%M:%S.%L'
+
+          parse_to: attributes 
+
+
+
+        - type: severity_parser
+
+          parse_from: attributes.severity
+
+
+
+        - type: move
+
+          from: attributes.message
+
+          to: body
+
+         
+
+        - type: move
+
+          from: attributes["log.file.path"]
+
+          to: resource["log.file.path"]
+
+          if: 'attributes["log.file.path"] != nil'
+
+        - type: move
+
+          from: attributes["log.file.name"]
+
+          to: resource["log.file.name"]
+
+          if: 'attributes["log.file.name"] != nil'             
+
+
+
+  processors:
+
+    k8sattributes:
+
+      pod_association:
+
+        - sources:
+
+            - from: resource_attribute
+
+              name: k8s.pod.ip
+
+        - sources:
+
+            - from: resource_attribute
+
+              name: k8s.pod.uid
+
+        - sources:
+
+            - from: connection
+
+        - sources:
+
+            - from: resource_attribute
+
+              name: k8s.pod.name
+
+            - from: resource_attribute
+
+              name: k8s.namespace.name
+
+      extract:
+
+        metadata:
+
+          - k8s.pod.name
+
+          - k8s.namespace.name
+
+    resource:
+
+      attributes:
+
+        - action: upsert
+
+          key: k8s.cluster.id
+
+          value: ${eks_cluster}
+
+        - action: upsert
+
+          key: otel.collector.id
+
+          value: ${collector_id}-logs
+
+        - action: upsert
+
+          key: argus.app.id
+
+          value: ${argus_app_id}
+
+        - action: upsert
+
+          key: argus.app.env
+
+          value: ${argus_app_env}
+
+        - action: upsert   # This label is needed if logs needs to use the otlhttp exporter. If to use the loki exporter this label can be removed
+
+          key: loki.exporter
+
+          value: otlphttp
+
+        - action: upsert
+
+          key: argus.product.id
+
+          value: ${argus_product_id}
+
+        - action: upsert
+
+          key: argus.app.service
+
+          value: ${argus_app_service}
+
+    resourcedetection:
+
+      detectors: [env, system, ec2] # include ec2 for AWS, gce for GCP and azure for Azure.
+
+      timeout: 2s
+
+      override: false
+
+
+
+    filter/noise:
+
+      logs:
+
+        log_record:
+
+          - 'IsMatch(body, ".*debug.*")'
+
+    batch:
+
+      send_batch_max_size: 1000
+
+      timeout: 10s
+
+      send_batch_size: 800
+
+
+
+  extensions:
+
+    k8s_observer:
+
+      node: $${K8S_NODE_NAME}
+
+      observe_pods: true
+
+      observe_nodes: true
+
+    health_check: {}
+
+    headers_setter:
+
+      headers:
+
+        - action: upsert
+
+          key: X-Scope-OrgId
+
+          from_context: X-Scope-OrgId
+
+  exporters:
+
+    otlp:
+
+      endpoint: "https://otel.${argus_domain_name}:443"
+
+      headers:
+
+        X-Scope-OrgId: ${app_ci_shortname}
+
+      compression: snappy
+
+      tls:  
+
+        insecure: false
+
+        insecure_skip_verify: true 
+
+  service:
+
+    telemetry:
+
+      metrics:
+
+        level: detailed
+
+      logs:
+
+        level: WARN
+
+    extensions: [health_check, headers_setter]
+
+    pipelines:
+
+      logs:
+
+        receivers: [filelog/k8s_pods, filelog/custom, k8s_events]
+
+        processors: [k8sattributes, resource, resourcedetection, filter/noise, batch]
+
+        exporters: [otlp]
+
+      metrics: null
+
+      traces: null
+
+
+
+ports:
+
+  otlp:
+
+    enabled: true
+
+  otlp-http:
+
+    enabled: true
+
+  jaeger-compact:
+
+    enabled: false
+
+  jaeger-thrift:
+
+    enabled: false
+
+  jaeger-grpc:
+
+    enabled: false
+
+  zipkin:
+
+    enabled: false
+
+  metrics:
+
+    enabled: true
+
+    containerPort: 8888
+
+    servicePort: 8888
+
+    protocol: TCP
+
+
+
+# Resource limits & requests. Update according to your own use case as these values might be too low for a typical deployment.
+
+resources: {}
+
+# resources:
+
+#   requests:
+
+#     cpu: 250m
+
+#     memory: 256Mi
+
+#   limits:
+
+#     cpu: 500m
+
+#     memory: 512Mi

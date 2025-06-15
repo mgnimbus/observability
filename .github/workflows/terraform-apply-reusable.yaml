@@ -1,0 +1,118 @@
+name: Terraform Apply Reusable
+
+on:
+  workflow_call:
+    inputs:
+      working-directory:
+        required: true
+        type: string
+      component-name:
+        required: true
+        type: string
+      aws-region:
+        required: true
+        type: string
+      terraform-version:
+        required: true
+        type: string
+      needs-kubeconfig:
+        required: false
+        type: boolean
+        default: false
+      eks-directory:
+        required: false
+        type: string
+        default: ./_1_eks
+    secrets:
+      AWS_ACCESS_KEY_ID:
+        required: true
+      AWS_SECRET_ACCESS_KEY:
+        required: true
+
+jobs:
+  terraform-apply:
+    name: "Apply - ${{ inputs.component-name }}"
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+        working-directory: ${{ inputs.working-directory }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4.0.2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ inputs.aws-region }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ inputs.terraform-version }}
+          terraform_wrapper: false
+
+      - name: Update kubeconfig
+        if: inputs.needs-kubeconfig
+        run: |
+          # Get cluster name from EKS terraform output
+          CLUSTER_NAME=$(terraform -chdir=${{ inputs.eks-directory }} output -raw cluster_name 2>/dev/null || echo "")
+          if [ -n "$CLUSTER_NAME" ]; then
+            aws eks update-kubeconfig --region ${{ inputs.aws-region }} --name $CLUSTER_NAME
+          else
+            echo "⚠️  Could not retrieve cluster name, skipping kubeconfig update"
+          fi
+
+      - name: Cache Terraform
+        uses: actions/cache@v3
+        with:
+          path: |
+            ${{ inputs.working-directory }}/.terraform
+            ${{ inputs.working-directory }}/.terraform.lock.hcl
+          key: terraform-${{ inputs.component-name }}-${{ hashFiles(format('{0}/*.tf', inputs.working-directory)) }}
+          restore-keys: |
+            terraform-${{ inputs.component-name }}-
+
+      - name: Terraform Init
+        run: |
+          terraform init -upgrade=false
+
+      - name: Terraform Format Check
+        run: terraform fmt -check=true
+
+      - name: Terraform Validate
+        run: terraform validate
+
+      - name: Terraform Plan
+        id: plan
+        run: |
+          terraform plan -input=false -out=tfplan -detailed-exitcode || echo "exitcode=$?" >> $GITHUB_OUTPUT
+
+      - name: Check Plan Changes
+        id: check-changes
+        run: |
+          if [ "${{ steps.plan.outputs.exitcode }}" == "2" ]; then
+            echo "changes=true" >> $GITHUB_OUTPUT
+            echo "📋 Changes detected in Terraform plan"
+          else
+            echo "changes=false" >> $GITHUB_OUTPUT
+            echo "✅ No changes in Terraform plan"
+          fi
+
+      - name: Terraform Apply
+        if: steps.check-changes.outputs.changes == 'true'
+        run: terraform apply -auto-approve tfplan
+
+      - name: Store Outputs
+        id: outputs
+        if: always()
+        run: |
+          if terraform output -json > /tmp/outputs.json 2>/dev/null; then
+            echo "outputs=$(cat /tmp/outputs.json)" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Clean up
+        if: always()
+        run: rm -f tfplan /tmp/outputs.json

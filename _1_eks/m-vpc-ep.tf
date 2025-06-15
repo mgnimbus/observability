@@ -49,7 +49,7 @@ module "vpc_endpoints" {
 
   tags = merge(local.common_tags, { Name = "${local.name}-vpc-endpoints" })
 
-  depends_on = [module.vpc, aws_security_group.vpc_ep_sg]
+  depends_on = [module.vpc]
 }
 
 # --- Ensure these supporting resources are correctly defined ---

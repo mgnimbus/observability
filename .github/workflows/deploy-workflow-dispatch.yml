@@ -1,0 +1,538 @@
+name: EKS-With-Terraform CD (Manual/Auto)
+run-name: "Argus CD by ${{ github.actor }}, through ${{ github.event_name }}"
+
+permissions:
+  contents: read
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+  workflow_dispatch:
+    inputs:
+      deploy_stage:
+        description: "Deployment stage to run"
+        required: false
+        default: "all"
+        type: choice
+        options:
+          - all
+          - stage1-only
+          - stage2-only
+          - stage3-only
+          - stage4-only
+          - from-stage2
+          - from-stage3
+          - from-stage4
+      dry_run:
+        description: "Run Terraform plan only (no apply)"
+        required: false
+        default: false
+        type: boolean
+      environment:
+        description: "Environment name for deployment"
+        required: false
+        default: "production"
+        type: choice
+        options:
+          - development
+          - staging
+          - production
+      skip_validation:
+        description: "Skip Terraform fmt and validate checks"
+        required: false
+        default: false
+        type: boolean
+      terraform_parallelism:
+        description: "Terraform parallelism level (10-50)"
+        required: false
+        default: "20"
+        type: string
+
+env:
+  AWS_REGION: ap-south-2
+  TF_VERSION: 1.4.4
+  ENVIRONMENT: ${{ github.event.inputs.environment || 'production' }}
+  TF_VAR_environment: ${{ github.event.inputs.environment || 'production' }}
+  TF_CLI_ARGS: "-parallelism=${{ github.event.inputs.terraform_parallelism || '20' }}"
+
+jobs:
+  # Show deployment configuration for manual runs
+  deployment-info:
+    name: "📋 Deployment Configuration"
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch'
+    steps:
+      - name: Display deployment parameters
+        run: |
+          echo "## 🚀 Deployment Configuration" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Parameter | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|-----------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Deploy Stage | **${{ github.event.inputs.deploy_stage }}** |" >> $GITHUB_STEP_SUMMARY
+          echo "| Dry Run | ${{ github.event.inputs.dry_run }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Environment | **${{ github.event.inputs.environment }}** |" >> $GITHUB_STEP_SUMMARY
+          echo "| Skip Validation | ${{ github.event.inputs.skip_validation }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Terraform Parallelism | ${{ github.event.inputs.terraform_parallelism }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Triggered By | @${{ github.actor }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [ "${{ github.event.inputs.dry_run }}" == "true" ]; then
+            echo "### ⚠️ DRY RUN MODE" >> $GITHUB_STEP_SUMMARY
+            echo "No resources will be created or modified. Only terraform plan will be executed." >> $GITHUB_STEP_SUMMARY
+          fi
+
+  # Stage 1: Deploy EKS and Backend in parallel
+  stage-1-parallel:
+    name: "Stage 1 - ${{ matrix.component }}"
+    needs: [deployment-info]
+    if: |
+      always() && 
+      (needs.deployment-info.result == 'success' || needs.deployment-info.result == 'skipped') &&
+      contains(fromJSON('["all", "stage1-only", "from-stage1", null]'), github.event.inputs.deploy_stage)
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        component: [eks, backend]
+        include:
+          - component: eks
+            directory: ./_1_eks
+          - component: backend
+            directory: ./_3_backend
+      fail-fast: true
+    defaults:
+      run:
+        shell: bash
+        working-directory: ${{ matrix.directory }}
+    outputs:
+      eks-outputs: ${{ steps.outputs.outputs.eks }}
+      backend-outputs: ${{ steps.outputs.outputs.backend }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4.0.2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+
+      - name: Terraform Init
+        run: |
+          terraform init -backend-config="key=${{ env.ENVIRONMENT }}/${{ matrix.component }}/terraform.tfstate"
+
+      - name: Terraform Workspace
+        run: |
+          terraform workspace select ${{ env.ENVIRONMENT }} || terraform workspace new ${{ env.ENVIRONMENT }}
+
+      - name: Terraform Format Check
+        if: github.event.inputs.skip_validation != 'true'
+        run: terraform fmt -check=true
+
+      - name: Terraform Validate
+        if: github.event.inputs.skip_validation != 'true'
+        run: terraform validate
+
+      - name: Terraform Plan
+        id: plan
+        run: |
+          terraform plan -input=false -out=tfplan \
+            -var="environment=${{ env.ENVIRONMENT }}" \
+            -detailed-exitcode || echo "exitcode=$?" >> $GITHUB_OUTPUT
+
+      - name: Plan Summary
+        if: steps.plan.outputs.exitcode == '2'
+        run: |
+          echo "### 📋 ${{ matrix.component }} Plan Summary" >> $GITHUB_STEP_SUMMARY
+          terraform show -no-color tfplan | grep -E '(^.*will be|^.*must be|^.*Plan:)' | head -20 >> $GITHUB_STEP_SUMMARY || true
+
+      - name: Terraform Apply
+        if: |
+          github.event.inputs.dry_run != 'true' && 
+          steps.plan.outputs.exitcode == '2'
+        run: terraform apply -auto-approve tfplan
+
+      - name: Display Dry Run Message
+        if: |
+          github.event.inputs.dry_run == 'true' && 
+          steps.plan.outputs.exitcode == '2'
+        run: |
+          echo "🔍 DRY RUN MODE - No changes were applied for ${{ matrix.component }}"
+          echo "Changes would have been applied in normal mode"
+
+      - name: Store Outputs
+        id: outputs
+        if: github.event.inputs.dry_run != 'true'
+        run: |
+          echo "${{ matrix.component }}=$(terraform output -json)" >> $GITHUB_OUTPUT
+
+      - name: Clean up
+        if: always()
+        run: rm -f tfplan
+
+  # Stage 2: Deploy Load Balancer and Cert in parallel
+  stage-2-parallel:
+    name: "Stage 2 - ${{ matrix.component }}"
+    needs: stage-1-parallel
+    if: |
+      always() && 
+      needs.stage-1-parallel.result == 'success' &&
+      contains(fromJSON('["all", "stage2-only", "from-stage2", null]'), github.event.inputs.deploy_stage)
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        component: [loadbalancer, cert]
+        include:
+          - component: loadbalancer
+            directory: ./_1.2.1loadbalancer
+          - component: cert
+            directory: ./_1.4_cert
+      fail-fast: true
+    defaults:
+      run:
+        shell: bash
+        working-directory: ${{ matrix.directory }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4.0.2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+
+      - name: Update kubeconfig
+        run: |
+          # First, get the cluster name from the EKS terraform state
+          cd ../_1_eks
+          terraform init -backend-config="key=${{ env.ENVIRONMENT }}/eks/terraform.tfstate"
+          terraform workspace select ${{ env.ENVIRONMENT }} || terraform workspace new ${{ env.ENVIRONMENT }}
+          CLUSTER_NAME=$(terraform output -raw cluster_name 2>/dev/null || echo "")
+          if [ -n "$CLUSTER_NAME" ]; then
+            aws eks update-kubeconfig --region ${{ env.AWS_REGION }} --name $CLUSTER_NAME
+          else
+            echo "⚠️ Could not retrieve cluster name"
+            exit 1
+          fi
+
+      - name: Terraform Init
+        run: |
+          terraform init -backend-config="key=${{ env.ENVIRONMENT }}/${{ matrix.component }}/terraform.tfstate"
+
+      - name: Terraform Workspace
+        run: |
+          terraform workspace select ${{ env.ENVIRONMENT }} || terraform workspace new ${{ env.ENVIRONMENT }}
+
+      - name: Terraform Format Check
+        if: github.event.inputs.skip_validation != 'true'
+        run: terraform fmt -check=true
+
+      - name: Terraform Validate
+        if: github.event.inputs.skip_validation != 'true'
+        run: terraform validate
+
+      - name: Terraform Plan
+        id: plan
+        run: |
+          terraform plan -input=false -out=tfplan \
+            -var="environment=${{ env.ENVIRONMENT }}" \
+            -detailed-exitcode || echo "exitcode=$?" >> $GITHUB_OUTPUT
+
+      - name: Terraform Apply
+        if: |
+          github.event.inputs.dry_run != 'true' && 
+          steps.plan.outputs.exitcode == '2'
+        run: terraform apply -auto-approve tfplan
+
+      - name: Clean up
+        if: always()
+        run: rm -f tfplan
+
+  # Stage 3: Deploy monitoring components in parallel
+  stage-3-parallel:
+    name: "Stage 3 - ${{ matrix.component }}"
+    needs: stage-2-parallel
+    if: |
+      always() && 
+      needs.stage-2-parallel.result == 'success' &&
+      contains(fromJSON('["all", "stage3-only", "from-stage3", null]'), github.event.inputs.deploy_stage)
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        component: [nginx-ingress, grafana, loki, otel-operator]
+        include:
+          - component: nginx-ingress
+            directory: ./_1.2.2_nginx_ingress
+          - component: grafana
+            directory: ./_2_grafana
+          - component: loki
+            directory: ./_4_loki
+          - component: otel-operator
+            directory: ./_7_otel_operator
+      fail-fast: true
+    defaults:
+      run:
+        shell: bash
+        working-directory: ${{ matrix.directory }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4.0.2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+
+      - name: Update kubeconfig
+        run: |
+          cd ../_1_eks
+          terraform init -backend-config="key=${{ env.ENVIRONMENT }}/eks/terraform.tfstate"
+          terraform workspace select ${{ env.ENVIRONMENT }}
+          CLUSTER_NAME=$(terraform output -raw cluster_name)
+          aws eks update-kubeconfig --region ${{ env.AWS_REGION }} --name $CLUSTER_NAME
+
+      - name: Terraform Init
+        run: |
+          terraform init -backend-config="key=${{ env.ENVIRONMENT }}/${{ matrix.component }}/terraform.tfstate"
+
+      - name: Terraform Workspace
+        run: |
+          terraform workspace select ${{ env.ENVIRONMENT }} || terraform workspace new ${{ env.ENVIRONMENT }}
+
+      - name: Terraform Format Check
+        if: github.event.inputs.skip_validation != 'true'
+        run: terraform fmt -check=true
+
+      - name: Terraform Validate
+        if: github.event.inputs.skip_validation != 'true'
+        run: terraform validate
+
+      - name: Terraform Plan
+        id: plan
+        run: |
+          terraform plan -input=false -out=tfplan \
+            -var="environment=${{ env.ENVIRONMENT }}" \
+            -detailed-exitcode || echo "exitcode=$?" >> $GITHUB_OUTPUT
+
+      - name: Terraform Apply
+        if: |
+          github.event.inputs.dry_run != 'true' && 
+          steps.plan.outputs.exitcode == '2'
+        run: terraform apply -auto-approve tfplan
+
+      - name: Clean up
+        if: always()
+        run: rm -f tfplan
+
+  # Stage 4: Deploy collectors and meta monitoring
+  stage-4-parallel:
+    name: "Stage 4 - ${{ matrix.component }}"
+    needs: stage-3-parallel
+    if: |
+      always() && 
+      needs.stage-3-parallel.result == 'success' &&
+      contains(fromJSON('["all", "stage4-only", "from-stage4", null]'), github.event.inputs.deploy_stage)
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        component: [otel-collector, meta-monitoring]
+        include:
+          - component: otel-collector
+            directory: ./_8_otel_collector
+          - component: meta-monitoring
+            directory: ./_meta_monitoring
+      fail-fast: true
+    defaults:
+      run:
+        shell: bash
+        working-directory: ${{ matrix.directory }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4.0.2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+
+      - name: Update kubeconfig
+        run: |
+          cd ../_1_eks
+          terraform init -backend-config="key=${{ env.ENVIRONMENT }}/eks/terraform.tfstate"
+          terraform workspace select ${{ env.ENVIRONMENT }}
+          CLUSTER_NAME=$(terraform output -raw cluster_name)
+          aws eks update-kubeconfig --region ${{ env.AWS_REGION }} --name $CLUSTER_NAME
+
+      - name: Terraform Init
+        run: |
+          terraform init -backend-config="key=${{ env.ENVIRONMENT }}/${{ matrix.component }}/terraform.tfstate"
+
+      - name: Terraform Workspace
+        run: |
+          terraform workspace select ${{ env.ENVIRONMENT }} || terraform workspace new ${{ env.ENVIRONMENT }}
+
+      - name: Terraform Format Check
+        if: github.event.inputs.skip_validation != 'true'
+        run: terraform fmt -check=true
+
+      - name: Terraform Validate
+        if: github.event.inputs.skip_validation != 'true'
+        run: terraform validate
+
+      - name: Terraform Plan
+        id: plan
+        run: |
+          terraform plan -input=false -out=tfplan \
+            -var="environment=${{ env.ENVIRONMENT }}" \
+            -detailed-exitcode || echo "exitcode=$?" >> $GITHUB_OUTPUT
+
+      - name: Terraform Apply
+        if: |
+          github.event.inputs.dry_run != 'true' && 
+          steps.plan.outputs.exitcode == '2'
+        run: terraform apply -auto-approve tfplan
+
+      - name: Clean up
+        if: always()
+        run: rm -f tfplan
+
+  # Summary job
+  deployment-summary:
+    name: "📊 Deployment Summary"
+    needs:
+      [stage-1-parallel, stage-2-parallel, stage-3-parallel, stage-4-parallel]
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Check deployment status
+        id: status
+        run: |
+          # Determine overall status
+          if [ "${{ contains(needs.*.result, 'failure') }}" == "true" ]; then
+            echo "status=failure" >> $GITHUB_OUTPUT
+            echo "emoji=❌" >> $GITHUB_OUTPUT
+            echo "message=Deployment failed" >> $GITHUB_OUTPUT
+          elif [ "${{ contains(needs.*.result, 'cancelled') }}" == "true" ]; then
+            echo "status=cancelled" >> $GITHUB_OUTPUT
+            echo "emoji=⚠️" >> $GITHUB_OUTPUT
+            echo "message=Deployment cancelled" >> $GITHUB_OUTPUT
+          elif [ "${{ github.event.inputs.dry_run }}" == "true" ]; then
+            echo "status=dry-run" >> $GITHUB_OUTPUT
+            echo "emoji=🔍" >> $GITHUB_OUTPUT
+            echo "message=Dry run completed successfully" >> $GITHUB_OUTPUT
+          else
+            echo "status=success" >> $GITHUB_OUTPUT
+            echo "emoji=✅" >> $GITHUB_OUTPUT
+            echo "message=Deployment completed successfully" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Generate Summary
+        run: |
+          echo "## ${{ steps.status.outputs.emoji }} Deployment Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Status**: ${{ steps.status.outputs.message }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Environment**: ${{ env.ENVIRONMENT }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # Stage results table
+          echo "### Stage Results" >> $GITHUB_STEP_SUMMARY
+          echo "| Stage | Status | Components |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|--------|------------|" >> $GITHUB_STEP_SUMMARY
+
+          # Check each stage
+          if [ "${{ needs.stage-1-parallel.result }}" != "skipped" ]; then
+            echo "| Stage 1 | ${{ needs.stage-1-parallel.result }} | EKS, Backend |" >> $GITHUB_STEP_SUMMARY
+          fi
+          if [ "${{ needs.stage-2-parallel.result }}" != "skipped" ]; then
+            echo "| Stage 2 | ${{ needs.stage-2-parallel.result }} | Load Balancer, Cert |" >> $GITHUB_STEP_SUMMARY
+          fi
+          if [ "${{ needs.stage-3-parallel.result }}" != "skipped" ]; then
+            echo "| Stage 3 | ${{ needs.stage-3-parallel.result }} | Nginx, Grafana, Loki, OTel Operator |" >> $GITHUB_STEP_SUMMARY
+          fi
+          if [ "${{ needs.stage-4-parallel.result }}" != "skipped" ]; then
+            echo "| Stage 4 | ${{ needs.stage-4-parallel.result }} | OTel Collector, Meta Monitoring |" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Workflow**: ${{ github.workflow }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Run**: [#${{ github.run_number }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})" >> $GITHUB_STEP_SUMMARY
+          echo "**Triggered by**: @${{ github.actor }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Event**: ${{ github.event_name }}" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            echo "**Deploy Stage**: ${{ github.event.inputs.deploy_stage }}" >> $GITHUB_STEP_SUMMARY
+          fi
+
+      # Optional: Slack notification
+      - name: Slack Notification
+        if: always() && vars.SLACK_WEBHOOK_URL != ''
+        env:
+          SLACK_WEBHOOK_URL: ${{ vars.SLACK_WEBHOOK_URL }}
+        run: |
+          # Determine color based on status
+          if [ "${{ steps.status.outputs.status }}" == "success" ]; then
+            COLOR="good"
+          elif [ "${{ steps.status.outputs.status }}" == "failure" ]; then
+            COLOR="danger"
+          else
+            COLOR="warning"
+          fi
+
+          # Send notification
+          curl -X POST $SLACK_WEBHOOK_URL \
+            -H 'Content-type: application/json' \
+            -d '{
+              "attachments": [{
+                "color": "'$COLOR'",
+                "title": "EKS Infrastructure Deployment",
+                "text": "${{ steps.status.outputs.emoji }} ${{ steps.status.outputs.message }}",
+                "fields": [
+                  {
+                    "title": "Environment",
+                    "value": "'${{ env.ENVIRONMENT }}'",
+                    "short": true
+                  },
+                  {
+                    "title": "Triggered by",
+                    "value": "'${{ github.actor }}'",
+                    "short": true
+                  },
+                  {
+                    "title": "Workflow Run",
+                    "value": "<'${{ github.server_url }}'/'${{ github.repository }}'/actions/runs/'${{ github.run_id }}'|View Details>",
+                    "short": false
+                  }
+                ]
+              }]
+            }'

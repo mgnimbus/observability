@@ -1,0 +1,249 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: dns-debug-script
+  namespace: default
+data:
+  debug.sh: |
+    #!/bin/bash
+
+    # EKS DNS Debug Script for Private Route53 Zones
+
+    DOMAIN="otel.gowthamvandana.com"
+    PARENT_DOMAIN="otel.gowthamvandana.com"
+
+    echo "==========================================="
+    echo "EKS DNS Debug Script"
+    echo "Testing domain: $DOMAIN"
+    echo "==========================================="
+    echo
+
+    # Function to print section headers
+    print_section() {
+        echo -e "\n🔍 $1"
+        echo "-------------------------------------------"
+    }
+
+    # Function to run command and show output
+    run_cmd() {
+        echo "$ $1"
+        eval "$1"
+        echo
+    }
+
+    print_section "1. Pod Information"
+    run_cmd "hostname"
+    run_cmd "whoami"
+    run_cmd "date"
+    echo "Pod IP: $(hostname -i)"
+    echo "Pod Name: ${HOSTNAME}"
+    echo "Namespace: ${POD_NAMESPACE:-default}"
+
+    print_section "2. Kubernetes DNS Configuration"
+    run_cmd "cat /etc/resolv.conf"
+    run_cmd "env | grep -E 'KUBERNETES|DNS'"
+
+    print_section "3. Network Configuration"
+    run_cmd "ip route"
+    run_cmd "ip addr show eth0"
+
+    print_section "4. Kubernetes Service Discovery"
+    run_cmd "nslookup kubernetes.default.svc.cluster.local"
+    run_cmd "nslookup kube-dns.kube-system.svc.cluster.local"
+
+    print_section "5. CoreDNS Testing"
+    echo "Testing CoreDNS endpoints:"
+    COREDNS_IP=$(nslookup kube-dns.kube-system.svc.cluster.local | grep Address | tail -1 | awk '{print $2}')
+    echo "CoreDNS Service IP: $COREDNS_IP"
+
+    if [ ! -z "$COREDNS_IP" ]; then
+        run_cmd "dig @$COREDNS_IP $DOMAIN"
+        run_cmd "dig @$COREDNS_IP $PARENT_DOMAIN"
+    fi
+
+    print_section "6. DNS Resolution Tests - Target Domain"
+
+    # Test with nslookup
+    echo "Testing with nslookup:"
+    run_cmd "nslookup $DOMAIN"
+    run_cmd "nslookup $PARENT_DOMAIN"
+
+    # Test with dig
+    echo "Testing with dig:"
+    run_cmd "dig $DOMAIN"
+    run_cmd "dig $PARENT_DOMAIN"
+    run_cmd "dig $DOMAIN A"
+    run_cmd "dig $DOMAIN CNAME"
+    run_cmd "dig $DOMAIN ANY"
+    run_cmd "dig $DOMAIN +short"
+
+    # Test with host
+    echo "Testing with host:"
+    run_cmd "host $DOMAIN"
+    run_cmd "host $PARENT_DOMAIN"
+
+    print_section "7. DNS Server Chain Testing"
+    CLUSTER_DNS=$(grep nameserver /etc/resolv.conf | head -1 | awk '{print $2}')
+    echo "Cluster DNS server: $CLUSTER_DNS"
+
+    echo "Testing against specific DNS servers:"
+    run_cmd "dig @$CLUSTER_DNS $DOMAIN"
+
+    # Test against AWS DNS resolver
+    run_cmd "dig @169.254.169.253 $DOMAIN"
+
+    # Test VPC DNS (usually VPC CIDR + 2)
+    VPC_CIDRS=("10.0.0.2" "172.16.0.2" "192.168.0.2" "10.1.0.2" "10.2.0.2")
+    for vpc_dns in "${VPC_CIDRS[@]}"; do
+        echo "Testing VPC DNS $vpc_dns:"
+        timeout 5 dig @$vpc_dns $DOMAIN +time=2 +tries=1 2>/dev/null || echo "No response from $vpc_dns"
+    done
+
+    echo "Testing against public DNS (should work for public domains only):"
+    run_cmd "dig @8.8.8.8 google.com +short"
+    run_cmd "dig @8.8.8.8 $DOMAIN"
+
+    print_section "8. Instance Metadata & VPC Information"
+    echo "Attempting to get VPC information from metadata service:"
+
+    # Get instance metadata if available
+    run_cmd "curl -s --max-time 5 http://169.254.169.254/latest/meta-data/placement/availability-zone 2>/dev/null || echo 'Instance metadata unavailable (expected in Fargate)'"
+    run_cmd "curl -s --max-time 5 http://169.254.169.254/latest/meta-data/local-ipv4 2>/dev/null || echo 'Instance IP unavailable'"
+
+    # Try to determine VPC CIDR from routing
+    VPC_CIDR=$(ip route | grep eth0 | grep -E '10\.|172\.|192\.168\.' | head -1 | awk '{print $1}')
+    echo "Detected VPC CIDR: ${VPC_CIDR:-'Unable to detect'}"
+
+    print_section "9. Connectivity Tests"
+    echo "Testing connectivity to DNS servers:"
+    run_cmd "nc -zv $CLUSTER_DNS 53 2>&1 || echo 'netcat test failed'"
+
+    if command -v telnet &> /dev/null; then
+        echo "Testing with telnet:"
+        timeout 5 telnet $CLUSTER_DNS 53 2>&1 | head -5
+    fi
+
+    print_section "10. DNS Query Tracing"
+    echo "Detailed DNS trace:"
+    run_cmd "dig $DOMAIN +trace +nodnssec | head -20"
+
+    print_section "11. CoreDNS Configuration Check"
+    echo "Checking if we can access CoreDNS config:"
+    run_cmd "kubectl get configmap coredns -n kube-system -o yaml 2>/dev/null | grep -A 20 Corefile || echo 'Cannot access CoreDNS config (permissions)'"
+
+    print_section "12. EKS Specific Tests"
+    echo "EKS cluster DNS tests:"
+
+    # Test EKS internal services
+    run_cmd "nslookup kubernetes"
+    run_cmd "dig kubernetes.default.svc.cluster.local +short"
+
+    # Test search domains
+    echo "DNS search domains from /etc/resolv.conf:"
+    grep search /etc/resolv.conf || echo "No search domains configured"
+
+    print_section "13. Route53 Resolver Testing"
+    echo "Testing Route53 resolver endpoints:"
+
+    # Common Route53 resolver IPs for different regions
+    R53_RESOLVERS=("169.254.169.253" "fd00:ec2::253")
+    for resolver in "${R53_RESOLVERS[@]}"; do
+        echo "Testing Route53 resolver $resolver:"
+        timeout 5 dig @$resolver $DOMAIN +time=2 +tries=1 2>/dev/null || echo "No response from $resolver"
+    done
+
+    print_section "14. Troubleshooting Information"
+    echo "=== TROUBLESHOOTING GUIDE ==="
+    echo
+    echo "If your private Route53 domain is not resolving:"
+    echo
+    echo "1. VPC Configuration:"
+    echo "   - Ensure VPC has DNS resolution enabled"
+    echo "   - Ensure VPC has DNS hostnames enabled"
+    echo "   - Check: aws ec2 describe-vpcs --vpc-ids <vpc-id>"
+    echo
+    echo "2. Route53 Configuration:"
+    echo "   - Verify private hosted zone exists"
+    echo "   - Ensure zone is associated with EKS cluster VPC"
+    echo "   - Check DNS records exist in the zone"
+    echo "   - Check: aws route53 list-hosted-zones-by-vpc --vpc-id <vpc-id>"
+    echo
+    echo "3. EKS Configuration:"
+    echo "   - Check CoreDNS is running: kubectl get pods -n kube-system | grep coredns"
+    echo "   - Verify CoreDNS config: kubectl get cm coredns -n kube-system -o yaml"
+    echo "   - Check node DNS settings affect pod DNS"
+    echo
+    echo "4. Network Configuration:"
+    echo "   - Verify security groups allow DNS (UDP/TCP 53)"
+    echo "   - Check NACLs allow DNS traffic"
+    echo "   - Ensure subnet routing is correct"
+    echo
+    echo "5. Debug Commands:"
+    echo "   kubectl exec -it <debug-pod> -- nslookup $DOMAIN"
+    echo "   kubectl exec -it <debug-pod> -- dig $DOMAIN +trace"
+    echo
+    echo "Expected Results for Working Setup:"
+    echo "   - nslookup $DOMAIN should return IP address"
+    echo "   - dig $DOMAIN should show ANSWER section with records"
+    echo "   - No NXDOMAIN or SERVFAIL errors"
+    echo
+    echo "Current Status Summary:"
+    RESOLUTION_STATUS=$(nslookup $DOMAIN 2>&1 | grep -q "NXDOMAIN\|can't find" && echo "❌ FAILED" || echo "✅ SUCCESS")
+    echo "   - Domain resolution: $RESOLUTION_STATUS"
+    echo "   - Cluster DNS: $CLUSTER_DNS"
+    echo "   - Test completed at: $(date)"
+
+    echo -e "\n==========================================="
+    echo "EKS DNS Debug completed!"
+    echo "==========================================="
+
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: dns-debug-pod
+  namespace: default
+  labels:
+    app: dns-debug
+spec:
+  restartPolicy: Never
+  containers:
+    - name: dns-debug
+      image: nicolaka/netshoot:latest
+      command: ["/bin/bash"]
+      args: ["-c", "sleep 3600"] # Keep pod running for 1 hour
+      env:
+        - name: POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+      volumeMounts:
+        - name: debug-script
+          mountPath: /debug
+      resources:
+        requests:
+          memory: "64Mi"
+          cpu: "50m"
+        limits:
+          memory: "128Mi"
+          cpu: "100m"
+  volumes:
+    - name: debug-script
+      configMap:
+        name: dns-debug-script
+        defaultMode: 0755
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: dns-debug-service
+  namespace: default
+spec:
+  selector:
+    app: dns-debug
+  ports:
+    - port: 80
+      targetPort: 80
+  type: ClusterIP

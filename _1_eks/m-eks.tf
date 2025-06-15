@@ -105,7 +105,7 @@ module "eks" {
     }
   }
   tags       = local.common_tags
-  depends_on = [module.vpc]
+  depends_on = [module.vpc_endpoints]
 }
 
 resource "null_resource" "update_kubeconfig" {

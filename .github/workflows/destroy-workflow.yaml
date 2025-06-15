@@ -1,0 +1,239 @@
+name: EKS-Terraform-Destroy
+run-name: "Destroy Infrastructure by ${{ github.actor }}"
+
+permissions:
+  contents: read
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type "destroy" to confirm destruction of all resources'
+        required: true
+        type: string
+
+env:
+  AWS_REGION: ap-south-2
+  TF_VERSION: 1.4.4
+
+jobs:
+  validate-destruction:
+    name: "Validate Destruction Request"
+    runs-on: ubuntu-latest
+    outputs:
+      proceed: ${{ steps.validate.outputs.proceed }}
+    steps:
+      - name: Validate confirmation
+        id: validate
+        run: |
+          if [ "${{ github.event.inputs.confirm }}" != "destroy" ]; then
+            echo "❌ Destruction not confirmed. You must type 'destroy' to proceed."
+            echo "proceed=false" >> $GITHUB_OUTPUT
+            exit 1
+          else
+            echo "✅ Destruction confirmed. Proceeding with teardown..."
+            echo "proceed=true" >> $GITHUB_OUTPUT
+          fi
+
+  # Stage 1: Destroy meta monitoring and collectors
+  destroy-stage-1:
+    name: "Destroy Stage 1 - ${{ matrix.component }}"
+    needs: validate-destruction
+    if: needs.validate-destruction.outputs.proceed == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        component: [meta-monitoring, otel-collector]
+        include:
+          - component: meta-monitoring
+            directory: ./_meta_monitoring
+          - component: otel-collector
+            directory: ./_8_otel_collector
+      fail-fast: false
+    defaults:
+      run:
+        shell: bash
+        working-directory: ${{ matrix.directory }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4.0.2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+
+      - name: Update kubeconfig
+        run: |
+          aws eks update-kubeconfig --region ${{ env.AWS_REGION }} --name $(terraform -chdir=../_1_eks output -raw cluster_name) || echo "Cluster name retrieval failed"
+
+      - name: Terraform Init
+        run: terraform init
+
+      - name: Terraform Destroy
+        run: terraform destroy -auto-approve
+        continue-on-error: true
+
+  # Stage 2: Destroy monitoring components
+  destroy-stage-2:
+    name: "Destroy Stage 2 - ${{ matrix.component }}"
+    needs: destroy-stage-1
+    if: always() && needs.validate-destruction.outputs.proceed == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        component: [otel-operator, loki, grafana, nginx-ingress]
+        include:
+          - component: otel-operator
+            directory: ./_7_otel_operator
+          - component: loki
+            directory: ./_4_loki
+          - component: grafana
+            directory: ./_2_grafana
+          - component: nginx-ingress
+            directory: ./_1.2.2_nginx_ingress
+      fail-fast: false
+    defaults:
+      run:
+        shell: bash
+        working-directory: ${{ matrix.directory }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4.0.2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+
+      - name: Update kubeconfig
+        run: |
+          aws eks update-kubeconfig --region ${{ env.AWS_REGION }} --name $(terraform -chdir=../_1_eks output -raw cluster_name) || echo "Cluster name retrieval failed"
+
+      - name: Terraform Init
+        run: terraform init
+
+      - name: Terraform Destroy
+        run: terraform destroy -auto-approve
+        continue-on-error: true
+
+  # Stage 3: Destroy load balancer and cert
+  destroy-stage-3:
+    name: "Destroy Stage 3 - ${{ matrix.component }}"
+    needs: destroy-stage-2
+    if: always() && needs.validate-destruction.outputs.proceed == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        component: [cert, loadbalancer]
+        include:
+          - component: cert
+            directory: ./_1.4_cert
+          - component: loadbalancer
+            directory: ./_1.2.1loadbalancer
+      fail-fast: false
+    defaults:
+      run:
+        shell: bash
+        working-directory: ${{ matrix.directory }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4.0.2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+
+      - name: Update kubeconfig
+        run: |
+          aws eks update-kubeconfig --region ${{ env.AWS_REGION }} --name $(terraform -chdir=../_1_eks output -raw cluster_name) || echo "Cluster name retrieval failed"
+
+      - name: Terraform Init
+        run: terraform init
+
+      - name: Terraform Destroy
+        run: terraform destroy -auto-approve
+        continue-on-error: true
+
+  # Stage 4: Destroy backend and EKS
+  destroy-stage-4:
+    name: "Destroy Stage 4 - ${{ matrix.component }}"
+    needs: destroy-stage-3
+    if: always() && needs.validate-destruction.outputs.proceed == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        component: [backend, eks]
+        include:
+          - component: backend
+            directory: ./_3_backend
+          - component: eks
+            directory: ./_1_eks
+      fail-fast: false
+    defaults:
+      run:
+        shell: bash
+        working-directory: ${{ matrix.directory }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4.0.2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+
+      - name: Terraform Init
+        run: terraform init
+
+      - name: Terraform Destroy
+        run: terraform destroy -auto-approve
+        continue-on-error: true
+
+  # Summary
+  destruction-summary:
+    name: "Destruction Summary"
+    needs: [destroy-stage-4]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Summary
+        run: |
+          echo "🔥 Infrastructure destruction process completed!"
+          echo "Stage 1 (Meta & Collectors): ${{ needs.destroy-stage-1.result }}"
+          echo "Stage 2 (Monitoring): ${{ needs.destroy-stage-2.result }}"
+          echo "Stage 3 (LB & Cert): ${{ needs.destroy-stage-3.result }}"
+          echo "Stage 4 (Backend & EKS): ${{ needs.destroy-stage-4.result }}"

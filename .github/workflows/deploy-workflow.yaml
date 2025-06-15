@@ -1,0 +1,338 @@
+name: EKS-With-Terraform CD
+run-name: "Argus CD by ${{ github.actor }}, through ${{ github.event_name }}"
+
+permissions:
+  contents: read
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+  workflow_dispatch:
+    inputs:
+      deploy_stage:
+        description: "Deployment stage to run (all, stage1, stage2, stage3, stage4)"
+        required: false
+        default: "all"
+        type: choice
+        options:
+          - all
+          - stage1
+          - stage2
+          - stage3
+          - stage4
+      dry_run:
+        description: "Run Terraform plan only (no apply)"
+        required: false
+        default: false
+        type: boolean
+      environment:
+        description: "Environment name for deployment"
+        required: false
+        default: "production"
+        type: choice
+        options:
+          - development
+          - staging
+          - production
+      skip_validation:
+        description: "Skip Terraform fmt and validate checks"
+        required: false
+        default: false
+        type: boolean
+
+env:
+  AWS_REGION: ap-south-2
+  TF_VERSION: 1.4.4
+
+jobs:
+  # Show deployment configuration
+  deployment-info:
+    name: "Deployment Configuration"
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch'
+    steps:
+      - name: Display deployment parameters
+        run: |
+          echo "## 🚀 Deployment Configuration" >> $GITHUB_STEP_SUMMARY
+          echo "| Parameter | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|-----------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Deploy Stage | ${{ github.event.inputs.deploy_stage || 'all' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Dry Run | ${{ github.event.inputs.dry_run || 'false' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Environment | ${{ github.event.inputs.environment || 'production' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Skip Validation | ${{ github.event.inputs.skip_validation || 'false' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Triggered By | ${{ github.actor }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Event | ${{ github.event_name }} |" >> $GITHUB_STEP_SUMMARY
+
+  # Stage 1: Deploy EKS and Backend in parallel
+  stage-1-parallel:
+    name: "Stage 1 - ${{ matrix.component }}"
+    needs: [deployment-info]
+    if: |
+      always() && 
+      (needs.deployment-info.result == 'success' || needs.deployment-info.result == 'skipped') &&
+      (github.event.inputs.deploy_stage == 'all' || github.event.inputs.deploy_stage == 'stage1' || github.event.inputs.deploy_stage == null)
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        component: [eks, backend]
+        include:
+          - component: eks
+            directory: ./_1_eks
+          - component: backend
+            directory: ./_3_backend
+    defaults:
+      run:
+        shell: bash
+        working-directory: ${{ matrix.directory }}
+    outputs:
+      eks-outputs: ${{ steps.outputs.outputs.eks }}
+      backend-outputs: ${{ steps.outputs.outputs.backend }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4.0.2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+
+      - name: Terraform Init
+        run: terraform init
+
+      - name: Terraform Format Check
+        if: github.event.inputs.skip_validation != 'true'
+        run: terraform fmt -check=true
+
+      - name: Terraform Validate
+        if: github.event.inputs.skip_validation != 'true'
+        run: terraform validate
+
+      - name: Terraform Plan
+        id: plan
+        run: terraform plan -input=false -out=tfplan
+
+      - name: Terraform Apply
+        if: github.event.inputs.dry_run != 'true'
+        run: terraform apply -auto-approve tfplan
+
+      - name: Display Plan Summary
+        if: github.event.inputs.dry_run == 'true'
+        run: |
+          echo "🔍 DRY RUN MODE - No changes were applied"
+          echo "Run workflow again without dry_run to apply changes"
+
+      - name: Store Outputs
+        id: outputs
+        run: |
+          echo "${{ matrix.component }}=$(terraform output -json)" >> $GITHUB_OUTPUT
+
+      - name: Clean up
+        if: always()
+        run: rm -f tfplan
+
+  # Stage 2: Deploy Load Balancer and Cert in parallel
+  stage-2-parallel:
+    name: "Stage 2 - ${{ matrix.component }}"
+    needs: stage-1-parallel
+    if: |
+      always() && 
+      needs.stage-1-parallel.result == 'success' &&
+      (github.event.inputs.deploy_stage == 'all' || github.event.inputs.deploy_stage == 'stage2' || github.event.inputs.deploy_stage == null)
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        component: [loadbalancer, cert]
+        include:
+          - component: loadbalancer
+            directory: ./_1.2.1loadbalancer
+          - component: cert
+            directory: ./_1.4_cert
+    defaults:
+      run:
+        shell: bash
+        working-directory: ${{ matrix.directory }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4.0.2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+
+      - name: Update kubeconfig
+        run: |
+          aws eks update-kubeconfig --region ${{ env.AWS_REGION }} --name $(terraform -chdir=../_1_eks output -raw cluster_name) || echo "Cluster name retrieval failed"
+
+      - name: Terraform Init
+        run: terraform init
+
+      - name: Terraform Format Check
+        run: terraform fmt -check=true
+
+      - name: Terraform Validate
+        run: terraform validate
+
+      - name: Terraform Plan
+        id: plan
+        run: terraform plan -input=false -out=tfplan
+
+      - name: Terraform Apply
+        run: terraform apply -auto-approve tfplan
+
+      - name: Clean up
+        if: always()
+        run: rm -f tfplan
+
+  # Stage 3: Deploy monitoring components in parallel
+  stage-3-parallel:
+    name: "Stage 3 - ${{ matrix.component }}"
+    needs: stage-2-parallel
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        component: [nginx-ingress, grafana, loki, otel-operator]
+        include:
+          - component: nginx-ingress
+            directory: ./_1.2.2_nginx_ingress
+          - component: grafana
+            directory: ./_2_grafana
+          - component: loki
+            directory: ./_4_loki
+          - component: otel-operator
+            directory: ./_7_otel_operator
+    defaults:
+      run:
+        shell: bash
+        working-directory: ${{ matrix.directory }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4.0.2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+
+      - name: Update kubeconfig
+        run: |
+          aws eks update-kubeconfig --region ${{ env.AWS_REGION }} --name $(terraform -chdir=../_1_eks output -raw cluster_name) || echo "Cluster name retrieval failed"
+
+      - name: Terraform Init
+        run: terraform init
+
+      - name: Terraform Format Check
+        run: terraform fmt -check=true
+
+      - name: Terraform Validate
+        run: terraform validate
+
+      - name: Terraform Plan
+        id: plan
+        run: terraform plan -input=false -out=tfplan
+
+      - name: Terraform Apply
+        run: terraform apply -auto-approve tfplan
+
+      - name: Clean up
+        if: always()
+        run: rm -f tfplan
+
+  # Stage 4: Deploy collectors and meta monitoring
+  stage-4-parallel:
+    name: "Stage 4 - ${{ matrix.component }}"
+    needs: stage-3-parallel
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        component: [otel-collector, meta-monitoring]
+        include:
+          - component: otel-collector
+            directory: ./_8_otel_collector
+          - component: meta-monitoring
+            directory: ./_meta_monitoring
+    defaults:
+      run:
+        shell: bash
+        working-directory: ${{ matrix.directory }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4.0.2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+
+      - name: Update kubeconfig
+        run: |
+          aws eks update-kubeconfig --region ${{ env.AWS_REGION }} --name $(terraform -chdir=../_1_eks output -raw cluster_name) || echo "Cluster name retrieval failed"
+
+      - name: Terraform Init
+        run: terraform init
+
+      - name: Terraform Format Check
+        run: terraform fmt -check=true
+
+      - name: Terraform Validate
+        run: terraform validate
+
+      - name: Terraform Plan
+        id: plan
+        run: terraform plan -input=false -out=tfplan
+
+      - name: Terraform Apply
+        run: terraform apply -auto-approve tfplan
+
+      - name: Clean up
+        if: always()
+        run: rm -f tfplan
+
+  # Summary job
+  deployment-summary:
+    name: "Deployment Summary"
+    needs: [stage-4-parallel]
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Check deployment status
+        run: |
+          echo "🚀 Deployment completed!"
+          echo "Stage 1: ${{ needs.stage-1-parallel.result }}"
+          echo "Stage 2: ${{ needs.stage-2-parallel.result }}"
+          echo "Stage 3: ${{ needs.stage-3-parallel.result }}"
+          echo "Stage 4: ${{ needs.stage-4-parallel.result }}"

@@ -87,15 +87,15 @@ config:
     #     insecure: true
     #   auth:
     #     authenticator: headers_setter
-    # prometheusremotewrite:
-    #   endpoint: "${mimir_endpoint}"
-    #   tls:
-    #     insecure: true
-    #   resource_to_telemetry_conversion:
-    #     enabled: true # Convert resource attributes to metric labels
-    #   add_metric_suffixes: true
-    #   auth:
-    #     authenticator: headers_setter
+    prometheusremotewrite:
+      endpoint: "${mimir_endpoint}"
+      tls:
+        insecure: true
+      resource_to_telemetry_conversion:
+        enabled: true # Convert resource attributes to metric labels
+      add_metric_suffixes: true
+      auth:
+        authenticator: headers_setter
     otlphttp/loki:
       endpoint: "${loki_endpoint}"
       tls:

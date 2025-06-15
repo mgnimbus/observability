@@ -226,8 +226,7 @@ config:
     pipelines:
       logs:
         receivers: [filelog, k8s_events]
-        processors:
-          [filter/noise, batch]
+        processors: [filter/noise, batch]
         exporters: [otlp]
 
 ports:

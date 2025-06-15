@@ -36,27 +36,27 @@ resource "helm_release" "node_exporter" {
 }
 
 
-# resource "helm_release" "otel_meta_cop_logs" {
-#   name = "otel-meta-cop-logs"
+resource "helm_release" "otel_meta_cop_logs" {
+  name = "otel-meta-cop-logs"
 
-#   repository       = "https://open-telemetry.github.io/opentelemetry-helm-charts"
-#   chart            = "opentelemetry-collector"
-#   version          = "0.120.1"
-#   create_namespace = false
-#   namespace        = kubernetes_namespace.meta_monitoring.metadata[0].name
-#   timeout          = 60
-#   values = [
-#     "${templatefile("${path.module}/manifests/otel_meta_cop_logs.yaml", {
-#       collector_id    = "obsrv-logs"
-#       eks_cluster     = data.terraform_remote_state.eks.outputs.cluster_name
-#       namespace       = kubernetes_namespace.meta_monitoring.metadata[0].name
-#       service_account = var.service_account_name
-#       # obsrv_domain_name = var.obsrv_domain_name
-#       # skip_tls_verify   = var.skip_tls_verify
-#     })}"
-#   ]
-#   depends_on = [kubernetes_secret_v1.otel_internal_ca]
-# }
+  repository       = "https://open-telemetry.github.io/opentelemetry-helm-charts"
+  chart            = "opentelemetry-collector"
+  version          = "0.120.1"
+  create_namespace = false
+  namespace        = kubernetes_namespace.meta_monitoring.metadata[0].name
+  timeout          = 60
+  values = [
+    "${templatefile("${path.module}/manifests/otel_meta_cop_logs.yaml", {
+      collector_id    = "obsrv-logs"
+      eks_cluster     = data.terraform_remote_state.eks.outputs.cluster_name
+      namespace       = kubernetes_namespace.meta_monitoring.metadata[0].name
+      service_account = var.service_account_name
+      # obsrv_domain_name = var.obsrv_domain_name
+      # skip_tls_verify   = var.skip_tls_verify
+    })}"
+  ]
+  depends_on = [kubernetes_secret_v1.otel_internal_ca]
+}
 /*
 resource "kubectl_manifest" "ta" {
   yaml_body = templatefile("${path.module}/manifests/meta_ta.yaml", {
@@ -70,10 +70,11 @@ resource "kubectl_manifest" "ta" {
   })
   depends_on = [kubernetes_secret_v1.otel_internal_ca]
 }
+*/
 
 resource "kubectl_manifest" "metrics" {
-  yaml_body = templatefile("${path.module}/manifests/meta_metrics.yaml", {
-    collector_id    = "obsrv-metrics"
+  yaml_body = templatefile("${path.module}/manifests/new.yaml", {
+    collector_id    = "obsrv-metrics-new"
     eks_cluster     = data.terraform_remote_state.eks.outputs.cluster_name
     namespace       = kubernetes_namespace.meta_monitoring.metadata[0].name
     service_account = var.service_account_name
@@ -83,7 +84,6 @@ resource "kubectl_manifest" "metrics" {
   })
   depends_on = [kubernetes_secret_v1.otel_internal_ca]
 }
-*/
 
 
 resource "kubectl_manifest" "serviceaccount" {

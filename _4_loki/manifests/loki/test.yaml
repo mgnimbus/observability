@@ -107,16 +107,14 @@ loki:
       max_queriers_per_tenant: 5
       otlp_config:
         resource_attributes:
-          ignore_defaults: true
+          ignore_defaults: false
           attributes_config:
             - action: index_label
               attributes:
-                - log.file.path
-                - log_file_path
-                - filename
                 - pod
                 - namespace
                 - log.file.path
+                - log.file.name
 
     compactor:
       retention_enabled: true

@@ -1,0 +1,563 @@
+===========================================
+EKS DNS Debug Script
+Testing domain: otel.gowthamvandana.com
+===========================================
+
+
+🔍 1. Pod Information
+-------------------------------------------
+$ hostname
+dns-debug-pod
+
+$ whoami
+root
+
+$ date
+Sun Jun 15 08:05:13 UTC 2025
+
+Pod IP: 10.0.24.204
+Pod Name: netshoot
+Namespace: default
+
+🔍 2. Kubernetes DNS Configuration
+-------------------------------------------
+$ cat /etc/resolv.conf
+search default.svc.cluster.local svc.cluster.local cluster.local ap-south-2.compute.internal
+nameserver 172.20.0.10
+options ndots:5
+
+$ env | grep -E 'KUBERNETES|DNS'
+KUBERNETES_SERVICE_PORT_HTTPS=443
+KUBERNETES_SERVICE_PORT=443
+DNS_DEBUG_SERVICE_SERVICE_HOST=172.20.115.223
+DNS_DEBUG_SERVICE_SERVICE_PORT=80
+DNS_DEBUG_SERVICE_PORT=tcp://172.20.115.223:80
+DNS_DEBUG_SERVICE_PORT_80_TCP_PROTO=tcp
+KUBERNETES_PORT_443_TCP=tcp://172.20.0.1:443
+DNS_DEBUG_SERVICE_PORT_80_TCP_ADDR=172.20.115.223
+DNS_DEBUG_SERVICE_PORT_80_TCP=tcp://172.20.115.223:80
+KUBERNETES_PORT_443_TCP_PROTO=tcp
+KUBERNETES_PORT_443_TCP_ADDR=172.20.0.1
+KUBERNETES_SERVICE_HOST=172.20.0.1
+KUBERNETES_PORT=tcp://172.20.0.1:443
+KUBERNETES_PORT_443_TCP_PORT=443
+DNS_DEBUG_SERVICE_PORT_80_TCP_PORT=80
+
+
+🔍 3. Network Configuration
+-------------------------------------------
+$ ip route
+default via 169.254.1.1 dev eth0 
+169.254.1.1 dev eth0 scope link 
+
+$ ip addr show eth0
+3: eth0@if45: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 9001 qdisc noqueue state UP group default 
+    link/ether 62:30:6c:23:01:64 brd ff:ff:ff:ff:ff:ff link-netnsid 0
+    inet 10.0.24.204/32 scope global eth0
+       valid_lft forever preferred_lft forever
+    inet6 fe80::6030:6cff:fe23:164/64 scope link proto kernel_ll 
+       valid_lft forever preferred_lft forever
+
+
+🔍 4. Kubernetes Service Discovery
+-------------------------------------------
+$ nslookup kubernetes.default.svc.cluster.local
+Server:		172.20.0.10
+Address:	172.20.0.10#53
+
+Name:	kubernetes.default.svc.cluster.local
+Address: 172.20.0.1
+
+
+$ nslookup kube-dns.kube-system.svc.cluster.local
+Server:		172.20.0.10
+Address:	172.20.0.10#53
+
+Name:	kube-dns.kube-system.svc.cluster.local
+Address: 172.20.0.10
+
+
+
+🔍 5. CoreDNS Testing
+-------------------------------------------
+Testing CoreDNS endpoints:
+CoreDNS Service IP: 172.20.0.10
+$ dig @172.20.0.10 otel.gowthamvandana.com
+
+; <<>> DiG 9.18.25 <<>> @172.20.0.10 otel.gowthamvandana.com
+; (1 server found)
+;; global options: +cmd
+;; Got answer:
+;; ->>HEADER<<- opcode: QUERY, status: NOERROR, id: 57731
+;; flags: qr rd ra; QUERY: 1, ANSWER: 1, AUTHORITY: 0, ADDITIONAL: 1
+
+;; OPT PSEUDOSECTION:
+; EDNS: version: 0, flags:; udp: 1232
+; COOKIE: 6212e932175a4a1e (echoed)
+;; QUESTION SECTION:
+;otel.gowthamvandana.com.	IN	A
+
+;; ANSWER SECTION:
+otel.gowthamvandana.com. 30	IN	A	10.0.21.163
+
+;; Query time: 0 msec
+;; SERVER: 172.20.0.10#53(172.20.0.10) (UDP)
+;; WHEN: Sun Jun 15 08:05:13 UTC 2025
+;; MSG SIZE  rcvd: 103
+
+
+$ dig @172.20.0.10 gowthamvandana.com
+
+; <<>> DiG 9.18.25 <<>> @172.20.0.10 gowthamvandana.com
+; (1 server found)
+;; global options: +cmd
+;; Got answer:
+;; ->>HEADER<<- opcode: QUERY, status: NXDOMAIN, id: 42636
+;; flags: qr rd ra; QUERY: 1, ANSWER: 0, AUTHORITY: 1, ADDITIONAL: 1
+
+;; OPT PSEUDOSECTION:
+; EDNS: version: 0, flags:; udp: 1232
+; COOKIE: c1881cc0bd1245db (echoed)
+;; QUESTION SECTION:
+;gowthamvandana.com.		IN	A
+
+;; AUTHORITY SECTION:
+com.			30	IN	SOA	a.gtld-servers.net. nstld.verisign-grs.com. 1749974618 1800 900 604800 900
+
+;; Query time: 0 msec
+;; SERVER: 172.20.0.10#53(172.20.0.10) (UDP)
+;; WHEN: Sun Jun 15 08:05:13 UTC 2025
+;; MSG SIZE  rcvd: 138
+
+
+
+🔍 6. DNS Resolution Tests - Target Domain
+-------------------------------------------
+Testing with nslookup:
+$ nslookup otel.gowthamvandana.com
+Server:		172.20.0.10
+Address:	172.20.0.10#53
+
+Name:	otel.gowthamvandana.com
+Address: 10.0.21.163
+
+
+$ nslookup gowthamvandana.com
+Server:		172.20.0.10
+Address:	172.20.0.10#53
+
+** server can't find gowthamvandana.com: NXDOMAIN
+
+
+Testing with dig:
+$ dig otel.gowthamvandana.com
+
+; <<>> DiG 9.18.25 <<>> otel.gowthamvandana.com
+;; global options: +cmd
+;; Got answer:
+;; ->>HEADER<<- opcode: QUERY, status: NOERROR, id: 23394
+;; flags: qr rd ra; QUERY: 1, ANSWER: 1, AUTHORITY: 0, ADDITIONAL: 1
+
+;; OPT PSEUDOSECTION:
+; EDNS: version: 0, flags:; udp: 1232
+; COOKIE: 3459f0da5fe8da8d (echoed)
+;; QUESTION SECTION:
+;otel.gowthamvandana.com.	IN	A
+
+;; ANSWER SECTION:
+otel.gowthamvandana.com. 30	IN	A	10.0.21.163
+
+;; Query time: 0 msec
+;; SERVER: 172.20.0.10#53(172.20.0.10) (UDP)
+;; WHEN: Sun Jun 15 08:05:14 UTC 2025
+;; MSG SIZE  rcvd: 103
+
+
+$ dig gowthamvandana.com
+
+; <<>> DiG 9.18.25 <<>> gowthamvandana.com
+;; global options: +cmd
+;; Got answer:
+;; ->>HEADER<<- opcode: QUERY, status: NXDOMAIN, id: 44058
+;; flags: qr aa rd ra; QUERY: 1, ANSWER: 0, AUTHORITY: 1, ADDITIONAL: 1
+
+;; OPT PSEUDOSECTION:
+; EDNS: version: 0, flags:; udp: 1232
+; COOKIE: 527eda9075080594 (echoed)
+;; QUESTION SECTION:
+;gowthamvandana.com.		IN	A
+
+;; AUTHORITY SECTION:
+com.			30	IN	SOA	a.gtld-servers.net. nstld.verisign-grs.com. 1749974618 1800 900 604800 900
+
+;; Query time: 0 msec
+;; SERVER: 172.20.0.10#53(172.20.0.10) (UDP)
+;; WHEN: Sun Jun 15 08:05:14 UTC 2025
+;; MSG SIZE  rcvd: 138
+
+
+$ dig otel.gowthamvandana.com A
+
+; <<>> DiG 9.18.25 <<>> otel.gowthamvandana.com A
+;; global options: +cmd
+;; Got answer:
+;; ->>HEADER<<- opcode: QUERY, status: NOERROR, id: 27311
+;; flags: qr aa rd ra; QUERY: 1, ANSWER: 1, AUTHORITY: 0, ADDITIONAL: 1
+
+;; OPT PSEUDOSECTION:
+; EDNS: version: 0, flags:; udp: 1232
+; COOKIE: 0fba85854395968d (echoed)
+;; QUESTION SECTION:
+;otel.gowthamvandana.com.	IN	A
+
+;; ANSWER SECTION:
+otel.gowthamvandana.com. 30	IN	A	10.0.21.163
+
+;; Query time: 0 msec
+;; SERVER: 172.20.0.10#53(172.20.0.10) (UDP)
+;; WHEN: Sun Jun 15 08:05:14 UTC 2025
+;; MSG SIZE  rcvd: 103
+
+
+$ dig otel.gowthamvandana.com CNAME
+
+; <<>> DiG 9.18.25 <<>> otel.gowthamvandana.com CNAME
+;; global options: +cmd
+;; Got answer:
+;; ->>HEADER<<- opcode: QUERY, status: NOERROR, id: 54334
+;; flags: qr rd ra; QUERY: 1, ANSWER: 0, AUTHORITY: 1, ADDITIONAL: 1
+
+;; OPT PSEUDOSECTION:
+; EDNS: version: 0, flags:; udp: 1232
+; COOKIE: d9aff50645d5ee20 (echoed)
+;; QUESTION SECTION:
+;otel.gowthamvandana.com.	IN	CNAME
+
+;; AUTHORITY SECTION:
+otel.gowthamvandana.com. 30	IN	SOA	ns-1536.awsdns-00.co.uk. awsdns-hostmaster.amazon.com. 1 7200 900 1209600 86400
+
+;; Query time: 10 msec
+;; SERVER: 172.20.0.10#53(172.20.0.10) (UDP)
+;; WHEN: Sun Jun 15 08:05:14 UTC 2025
+;; MSG SIZE  rcvd: 174
+
+
+$ dig otel.gowthamvandana.com ANY
+
+; <<>> DiG 9.18.25 <<>> otel.gowthamvandana.com ANY
+;; global options: +cmd
+;; Got answer:
+;; ->>HEADER<<- opcode: QUERY, status: NOERROR, id: 53353
+;; flags: qr rd ra; QUERY: 1, ANSWER: 6, AUTHORITY: 0, ADDITIONAL: 1
+
+;; OPT PSEUDOSECTION:
+; EDNS: version: 0, flags:; udp: 1232
+; COOKIE: 137ee7fd9b8baef0 (echoed)
+;; QUESTION SECTION:
+;otel.gowthamvandana.com.	IN	ANY
+
+;; ANSWER SECTION:
+otel.gowthamvandana.com. 30	IN	NS	ns-0.awsdns-00.com.
+otel.gowthamvandana.com. 30	IN	NS	ns-1024.awsdns-00.org.
+otel.gowthamvandana.com. 30	IN	NS	ns-1536.awsdns-00.co.uk.
+otel.gowthamvandana.com. 30	IN	NS	ns-512.awsdns-00.net.
+otel.gowthamvandana.com. 30	IN	SOA	ns-1536.awsdns-00.co.uk. awsdns-hostmaster.amazon.com. 1 7200 900 1209600 86400
+otel.gowthamvandana.com. 30	IN	A	10.0.21.163
+
+;; Query time: 20 msec
+;; SERVER: 172.20.0.10#53(172.20.0.10) (TCP)
+;; WHEN: Sun Jun 15 08:05:14 UTC 2025
+;; MSG SIZE  rcvd: 443
+
+
+$ dig otel.gowthamvandana.com +short
+10.0.21.163
+
+Testing with host:
+$ host otel.gowthamvandana.com
+otel.gowthamvandana.com has address 10.0.21.163
+
+$ host gowthamvandana.com
+Host gowthamvandana.com not found: 3(NXDOMAIN)
+
+
+🔍 7. DNS Server Chain Testing
+-------------------------------------------
+Cluster DNS server: 172.20.0.10
+Testing against specific DNS servers:
+$ dig @172.20.0.10 otel.gowthamvandana.com
+
+; <<>> DiG 9.18.25 <<>> @172.20.0.10 otel.gowthamvandana.com
+; (1 server found)
+;; global options: +cmd
+;; Got answer:
+;; ->>HEADER<<- opcode: QUERY, status: NOERROR, id: 16556
+;; flags: qr aa rd ra; QUERY: 1, ANSWER: 1, AUTHORITY: 0, ADDITIONAL: 1
+
+;; OPT PSEUDOSECTION:
+; EDNS: version: 0, flags:; udp: 1232
+; COOKIE: cafcac43947eb9b0 (echoed)
+;; QUESTION SECTION:
+;otel.gowthamvandana.com.	IN	A
+
+;; ANSWER SECTION:
+otel.gowthamvandana.com. 29	IN	A	10.0.21.163
+
+;; Query time: 0 msec
+;; SERVER: 172.20.0.10#53(172.20.0.10) (UDP)
+;; WHEN: Sun Jun 15 08:05:15 UTC 2025
+;; MSG SIZE  rcvd: 103
+
+
+$ dig @169.254.169.253 otel.gowthamvandana.com
+
+; <<>> DiG 9.18.25 <<>> @169.254.169.253 otel.gowthamvandana.com
+; (1 server found)
+;; global options: +cmd
+;; Got answer:
+;; ->>HEADER<<- opcode: QUERY, status: NOERROR, id: 2114
+;; flags: qr rd ra; QUERY: 1, ANSWER: 1, AUTHORITY: 0, ADDITIONAL: 1
+
+;; OPT PSEUDOSECTION:
+; EDNS: version: 0, flags:; udp: 4096
+;; QUESTION SECTION:
+;otel.gowthamvandana.com.	IN	A
+
+;; ANSWER SECTION:
+otel.gowthamvandana.com. 60	IN	A	10.0.21.163
+
+;; Query time: 0 msec
+;; SERVER: 169.254.169.253#53(169.254.169.253) (UDP)
+;; WHEN: Sun Jun 15 08:05:15 UTC 2025
+;; MSG SIZE  rcvd: 68
+
+
+Testing VPC DNS 10.0.0.2:
+
+; <<>> DiG 9.18.25 <<>> @10.0.0.2 otel.gowthamvandana.com +time=2 +tries=1
+; (1 server found)
+;; global options: +cmd
+;; Got answer:
+;; ->>HEADER<<- opcode: QUERY, status: NOERROR, id: 1982
+;; flags: qr rd ra; QUERY: 1, ANSWER: 1, AUTHORITY: 0, ADDITIONAL: 1
+
+;; OPT PSEUDOSECTION:
+; EDNS: version: 0, flags:; udp: 4096
+;; QUESTION SECTION:
+;otel.gowthamvandana.com.	IN	A
+
+;; ANSWER SECTION:
+otel.gowthamvandana.com. 60	IN	A	10.0.21.163
+
+;; Query time: 0 msec
+;; SERVER: 10.0.0.2#53(10.0.0.2) (UDP)
+;; WHEN: Sun Jun 15 08:05:15 UTC 2025
+;; MSG SIZE  rcvd: 68
+
+Testing VPC DNS 172.16.0.2:
+;; communications error to 172.16.0.2#53: timed out
+
+; <<>> DiG 9.18.25 <<>> @172.16.0.2 otel.gowthamvandana.com +time=2 +tries=1
+; (1 server found)
+;; global options: +cmd
+;; no servers could be reached
+
+No response from 172.16.0.2
+Testing VPC DNS 192.168.0.2:
+;; communications error to 192.168.0.2#53: timed out
+
+; <<>> DiG 9.18.25 <<>> @192.168.0.2 otel.gowthamvandana.com +time=2 +tries=1
+; (1 server found)
+;; global options: +cmd
+;; no servers could be reached
+
+No response from 192.168.0.2
+Testing VPC DNS 10.1.0.2:
+;; communications error to 10.1.0.2#53: timed out
+
+; <<>> DiG 9.18.25 <<>> @10.1.0.2 otel.gowthamvandana.com +time=2 +tries=1
+; (1 server found)
+;; global options: +cmd
+;; no servers could be reached
+
+No response from 10.1.0.2
+Testing VPC DNS 10.2.0.2:
+;; communications error to 10.2.0.2#53: timed out
+
+; <<>> DiG 9.18.25 <<>> @10.2.0.2 otel.gowthamvandana.com +time=2 +tries=1
+; (1 server found)
+;; global options: +cmd
+;; no servers could be reached
+
+No response from 10.2.0.2
+Testing against public DNS (should work for public domains only):
+$ dig @8.8.8.8 google.com +short
+142.251.43.206
+
+$ dig @8.8.8.8 otel.gowthamvandana.com
+
+; <<>> DiG 9.18.25 <<>> @8.8.8.8 otel.gowthamvandana.com
+; (1 server found)
+;; global options: +cmd
+;; Got answer:
+;; ->>HEADER<<- opcode: QUERY, status: NXDOMAIN, id: 29774
+;; flags: qr rd ra; QUERY: 1, ANSWER: 0, AUTHORITY: 1, ADDITIONAL: 1
+
+;; OPT PSEUDOSECTION:
+; EDNS: version: 0, flags:; udp: 512
+;; QUESTION SECTION:
+;otel.gowthamvandana.com.	IN	A
+
+;; AUTHORITY SECTION:
+com.			900	IN	SOA	a.gtld-servers.net. nstld.verisign-grs.com. 1749974693 1800 900 604800 900
+
+;; Query time: 40 msec
+;; SERVER: 8.8.8.8#53(8.8.8.8) (UDP)
+;; WHEN: Sun Jun 15 08:05:24 UTC 2025
+;; MSG SIZE  rcvd: 125
+
+
+
+🔍 8. Instance Metadata & VPC Information
+-------------------------------------------
+Attempting to get VPC information from metadata service:
+$ curl -s --max-time 5 http://169.254.169.254/latest/meta-data/placement/availability-zone 2>/dev/null || echo 'Instance metadata unavailable (expected in Fargate)'
+
+$ curl -s --max-time 5 http://169.254.169.254/latest/meta-data/local-ipv4 2>/dev/null || echo 'Instance IP unavailable'
+
+Detected VPC CIDR: 'Unable to detect'
+
+🔍 9. Connectivity Tests
+-------------------------------------------
+Testing connectivity to DNS servers:
+$ nc -zv 172.20.0.10 53 2>&1 || echo 'netcat test failed'
+Connection to 172.20.0.10 53 port [tcp/domain] succeeded!
+
+Testing with telnet:
+Connected to 172.20.0.10
+
+🔍 10. DNS Query Tracing
+-------------------------------------------
+Detailed DNS trace:
+$ dig otel.gowthamvandana.com +trace +nodnssec | head -20
+
+; <<>> DiG 9.18.25 <<>> otel.gowthamvandana.com +trace +nodnssec
+;; global options: +cmd
+.			30	IN	NS	k.root-servers.net.
+.			30	IN	NS	d.root-servers.net.
+.			30	IN	NS	j.root-servers.net.
+.			30	IN	NS	c.root-servers.net.
+.			30	IN	NS	f.root-servers.net.
+.			30	IN	NS	g.root-servers.net.
+.			30	IN	NS	l.root-servers.net.
+.			30	IN	NS	a.root-servers.net.
+.			30	IN	NS	m.root-servers.net.
+.			30	IN	NS	h.root-servers.net.
+.			30	IN	NS	e.root-servers.net.
+.			30	IN	NS	b.root-servers.net.
+.			30	IN	NS	i.root-servers.net.
+;; Received 443 bytes from 172.20.0.10#53(172.20.0.10) in 0 ms
+
+;; UDP setup with 2001:503:c27::2:30#53(2001:503:c27::2:30) for otel.gowthamvandana.com failed: network unreachable.
+;; no servers could be reached
+
+
+🔍 11. CoreDNS Configuration Check
+-------------------------------------------
+Checking if we can access CoreDNS config:
+$ kubectl get configmap coredns -n kube-system -o yaml 2>/dev/null | grep -A 20 Corefile || echo 'Cannot access CoreDNS config (permissions)'
+Cannot access CoreDNS config (permissions)
+
+
+🔍 12. EKS Specific Tests
+-------------------------------------------
+EKS cluster DNS tests:
+$ nslookup kubernetes
+Server:		172.20.0.10
+Address:	172.20.0.10#53
+
+Name:	kubernetes.default.svc.cluster.local
+Address: 172.20.0.1
+
+
+$ dig kubernetes.default.svc.cluster.local +short
+172.20.0.1
+
+DNS search domains from /etc/resolv.conf:
+search default.svc.cluster.local svc.cluster.local cluster.local ap-south-2.compute.internal
+
+🔍 13. Route53 Resolver Testing
+-------------------------------------------
+Testing Route53 resolver endpoints:
+Testing Route53 resolver 169.254.169.253:
+
+; <<>> DiG 9.18.25 <<>> @169.254.169.253 otel.gowthamvandana.com +time=2 +tries=1
+; (1 server found)
+;; global options: +cmd
+;; Got answer:
+;; ->>HEADER<<- opcode: QUERY, status: NOERROR, id: 14577
+;; flags: qr rd ra; QUERY: 1, ANSWER: 1, AUTHORITY: 0, ADDITIONAL: 1
+
+;; OPT PSEUDOSECTION:
+; EDNS: version: 0, flags:; udp: 4096
+;; QUESTION SECTION:
+;otel.gowthamvandana.com.	IN	A
+
+;; ANSWER SECTION:
+otel.gowthamvandana.com. 50	IN	A	10.0.21.163
+
+;; Query time: 0 msec
+;; SERVER: 169.254.169.253#53(169.254.169.253) (UDP)
+;; WHEN: Sun Jun 15 08:05:25 UTC 2025
+;; MSG SIZE  rcvd: 68
+
+Testing Route53 resolver fd00:ec2::253:
+;; UDP setup with fd00:ec2::253#53(fd00:ec2::253) for otel.gowthamvandana.com failed: network unreachable.
+;; no servers could be reached
+
+No response from fd00:ec2::253
+
+🔍 14. Troubleshooting Information
+-------------------------------------------
+=== TROUBLESHOOTING GUIDE ===
+
+If your private Route53 domain is not resolving:
+
+1. VPC Configuration:
+   - Ensure VPC has DNS resolution enabled
+   - Ensure VPC has DNS hostnames enabled
+   - Check: aws ec2 describe-vpcs --vpc-ids <vpc-id>
+
+2. Route53 Configuration:
+   - Verify private hosted zone exists
+   - Ensure zone is associated with EKS cluster VPC
+   - Check DNS records exist in the zone
+   - Check: aws route53 list-hosted-zones-by-vpc --vpc-id <vpc-id>
+
+3. EKS Configuration:
+   - Check CoreDNS is running: kubectl get pods -n kube-system | grep coredns
+   - Verify CoreDNS config: kubectl get cm coredns -n kube-system -o yaml
+   - Check node DNS settings affect pod DNS
+
+4. Network Configuration:
+   - Verify security groups allow DNS (UDP/TCP 53)
+   - Check NACLs allow DNS traffic
+   - Ensure subnet routing is correct
+
+5. Debug Commands:
+   kubectl exec -it <debug-pod> -- nslookup otel.gowthamvandana.com
+   kubectl exec -it <debug-pod> -- dig otel.gowthamvandana.com +trace
+
+Expected Results for Working Setup:
+   - nslookup otel.gowthamvandana.com should return IP address
+   - dig otel.gowthamvandana.com should show ANSWER section with records
+   - No NXDOMAIN or SERVFAIL errors
+
+Current Status Summary:
+   - Domain resolution: ✅ SUCCESS
+   - Cluster DNS: 172.20.0.10
+   - Test completed at: Sun Jun 15 08:05:26 UTC 2025
+
+===========================================
+EKS DNS Debug completed!
+===========================================

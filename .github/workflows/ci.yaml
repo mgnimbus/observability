@@ -31,7 +31,7 @@ jobs:
       - name: Setup Terraform with specified version on the runner
         uses: hashicorp/setup-terraform@v3
         with:
-          terraform_version: 1.4.4
+          terraform_version: 1.11.3
 
       - name: Install tfsec
         run: curl -L https://github.com/liamg/tfsec/releases/latest/download/tfsec-linux-amd64 -o tfsec && chmod +x tfsec && sudo mv tfsec /usr/local/bin/

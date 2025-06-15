@@ -1,0 +1,221 @@
+name: EKS-With-Terraform CD (Optimized)
+run-name: "Argus CD by ${{ github.actor }}, through ${{ github.event_name }}"
+
+permissions:
+  contents: read
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Environment name for deployment"
+        required: false
+        default: "production"
+        type: choice
+        options:
+          - development
+          - staging
+          - production
+      dry_run:
+        description: "Run Terraform plan only (no apply)"
+        required: false
+        default: false
+        type: boolean
+
+env:
+  AWS_REGION: ap-south-2
+  TF_VERSION: 1.4.4
+
+jobs:
+  # Stage 1: Deploy EKS and Backend in parallel
+  stage-1-eks:
+    uses: ./.github/workflows/terraform-apply-reusable.yml
+    with:
+      working-directory: ./_1_eks
+      component-name: eks
+      aws-region: ap-south-2
+      terraform-version: 1.4.4
+      needs-kubeconfig: false
+    secrets:
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+
+  stage-1-backend:
+    uses: ./.github/workflows/terraform-apply-reusable.yml
+    with:
+      working-directory: ./_3_backend
+      component-name: backend
+      aws-region: ap-south-2
+      terraform-version: 1.4.4
+      needs-kubeconfig: false
+    secrets:
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+
+  # Stage 2: Deploy Load Balancer and Cert in parallel
+  stage-2-loadbalancer:
+    needs: [stage-1-eks, stage-1-backend]
+    uses: ./.github/workflows/terraform-apply-reusable.yml
+    with:
+      working-directory: ./_1.2.1loadbalancer
+      component-name: loadbalancer
+      aws-region: ap-south-2
+      terraform-version: 1.4.4
+      needs-kubeconfig: true
+    secrets:
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+
+  stage-2-cert:
+    needs: [stage-1-eks, stage-1-backend]
+    uses: ./.github/workflows/terraform-apply-reusable.yml
+    with:
+      working-directory: ./_1.4_cert
+      component-name: cert
+      aws-region: ap-south-2
+      terraform-version: 1.4.4
+      needs-kubeconfig: true
+    secrets:
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+
+  # Stage 3: Deploy monitoring components in parallel
+  stage-3-nginx:
+    needs: [stage-2-loadbalancer, stage-2-cert]
+    uses: ./.github/workflows/terraform-apply-reusable.yml
+    with:
+      working-directory: ./_1.2.2_nginx_ingress
+      component-name: nginx-ingress
+      aws-region: ap-south-2
+      terraform-version: 1.4.4
+      needs-kubeconfig: true
+    secrets:
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+
+  stage-3-grafana:
+    needs: [stage-2-loadbalancer, stage-2-cert]
+    uses: ./.github/workflows/terraform-apply-reusable.yml
+    with:
+      working-directory: ./_2_grafana
+      component-name: grafana
+      aws-region: ap-south-2
+      terraform-version: 1.4.4
+      needs-kubeconfig: true
+    secrets:
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+
+  stage-3-loki:
+    needs: [stage-2-loadbalancer, stage-2-cert]
+    uses: ./.github/workflows/terraform-apply-reusable.yml
+    with:
+      working-directory: ./_4_loki
+      component-name: loki
+      aws-region: ap-south-2
+      terraform-version: 1.4.4
+      needs-kubeconfig: true
+    secrets:
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+
+  stage-3-otel-operator:
+    needs: [stage-2-loadbalancer, stage-2-cert]
+    uses: ./.github/workflows/terraform-apply-reusable.yml
+    with:
+      working-directory: ./_7_otel_operator
+      component-name: otel-operator
+      aws-region: ap-south-2
+      terraform-version: 1.4.4
+      needs-kubeconfig: true
+    secrets:
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+
+  # Stage 4: Deploy collectors and meta monitoring
+  stage-4-otel-collector:
+    needs: [stage-3-nginx, stage-3-grafana, stage-3-loki, stage-3-otel-operator]
+    uses: ./.github/workflows/terraform-apply-reusable.yml
+    with:
+      working-directory: ./_8_otel_collector
+      component-name: otel-collector
+      aws-region: ap-south-2
+      terraform-version: 1.4.4
+      needs-kubeconfig: true
+    secrets:
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+
+  stage-4-meta-monitoring:
+    needs: [stage-3-nginx, stage-3-grafana, stage-3-loki, stage-3-otel-operator]
+    uses: ./.github/workflows/terraform-apply-reusable.yml
+    with:
+      working-directory: ./_meta_monitoring
+      component-name: meta-monitoring
+      aws-region: ap-south-2
+      terraform-version: 1.4.4
+      needs-kubeconfig: true
+    secrets:
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+
+  # Summary job with Slack notification
+  deployment-summary:
+    name: "Deployment Summary"
+    needs: [stage-4-otel-collector, stage-4-meta-monitoring]
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Check deployment status
+        id: status
+        run: |
+          if [ "${{ contains(needs.*.result, 'failure') }}" == "true" ]; then
+            echo "status=failure" >> $GITHUB_OUTPUT
+            echo "emoji=❌" >> $GITHUB_OUTPUT
+          elif [ "${{ contains(needs.*.result, 'cancelled') }}" == "true" ]; then
+            echo "status=cancelled" >> $GITHUB_OUTPUT
+            echo "emoji=⚠️" >> $GITHUB_OUTPUT
+          else
+            echo "status=success" >> $GITHUB_OUTPUT
+            echo "emoji=✅" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Generate Summary
+        run: |
+          echo "## ${{ steps.status.outputs.emoji }} Deployment Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Stage | Components | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|------------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Stage 1 | EKS, Backend | ${{ needs.stage-1-eks.result }}, ${{ needs.stage-1-backend.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Stage 2 | Load Balancer, Cert | ${{ needs.stage-2-loadbalancer.result }}, ${{ needs.stage-2-cert.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Stage 3 | Nginx, Grafana, Loki, OTel Operator | See details |" >> $GITHUB_STEP_SUMMARY
+          echo "| Stage 4 | OTel Collector, Meta Monitoring | ${{ needs.stage-4-otel-collector.result }}, ${{ needs.stage-4-meta-monitoring.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Triggered by:** ${{ github.actor }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Event:** ${{ github.event_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Branch:** ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
+
+      # Optional: Add Slack notification
+      - name: Slack Notification
+        if: always() && vars.SLACK_WEBHOOK_URL != ''
+        env:
+          SLACK_WEBHOOK_URL: ${{ vars.SLACK_WEBHOOK_URL }}
+        run: |
+          curl -X POST $SLACK_WEBHOOK_URL \
+            -H 'Content-type: application/json' \
+            -d '{
+              "text": "${{ steps.status.outputs.emoji }} EKS Deployment ${{ steps.status.outputs.status }}",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "*EKS Infrastructure Deployment*\nStatus: *${{ steps.status.outputs.status }}*\nTriggered by: ${{ github.actor }}\nBranch: `${{ github.ref_name }}`"
+                  }
+                }
+              ]
+            }'
