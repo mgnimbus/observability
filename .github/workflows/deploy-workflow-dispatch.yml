@@ -52,7 +52,7 @@ on:
 
 env:
   AWS_REGION: ap-south-2
-  TF_VERSION: 1.4.4
+  TF_VERSION: 1.11.3
   ENVIRONMENT: ${{ github.event.inputs.environment || 'production' }}
   TF_VAR_environment: ${{ github.event.inputs.environment || 'production' }}
   TF_CLI_ARGS: "-parallelism=${{ github.event.inputs.terraform_parallelism || '20' }}"
