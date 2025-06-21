@@ -1,274 +1,129 @@
-# EKS Terraform Workflows
+# EKS Infrastructure Workflows
 
-This repository contains optimized GitHub Actions workflows for deploying and destroying EKS infrastructure with Terraform.
+This repository contains simplified GitHub Actions workflows for deploying and destroying EKS infrastructure.
 
-## 🚀 Features
+## Deployment Flow
 
-- **Parallel Execution**: Components are deployed in stages with maximum parallelization
-- **Dependency Management**: Proper ordering ensures resources are created/destroyed in the correct sequence
-- **Reusable Workflows**: Reduces code duplication and improves maintainability
-- **Caching**: Terraform providers and modules are cached for faster execution
-- **Safety Controls**: Destroy workflow requires explicit confirmation
-- **Comprehensive Reporting**: Job summaries and optional Slack notifications
-
-## 📁 Workflow Files
-
-### Deployment Workflows
-
-1. **`deploy-workflow.yml`** - Basic deployment workflow with matrix strategy (auto-trigger)
-2. **`deploy-workflow-dispatch.yml`** - Full-featured manual deployment with stage selection
-3. **`deploy-workflow-optimized.yml`** - Optimized deployment using reusable workflows
-4. **`deploy-simple-dispatch.yml`** - Simplified manual deployment for quick deployments
-5. **`terraform-apply-reusable.yml`** - Reusable workflow for Terraform operations
-
-### Destroy Workflow
-
-6. **`destroy-workflow.yml`** - Infrastructure destruction workflow (manual trigger only)
-
-### Choosing the Right Workflow
-
-| Use Case | Recommended Workflow | Key Features |
-|----------|---------------------|--------------|
-| Automated CI/CD | `deploy-workflow.yml` | Auto-triggers on push/PR |
-| Manual deployments with full control | `deploy-workflow-dispatch.yml` | Stage selection, dry-run, environment choice |
-| Quick manual deployments | `deploy-simple-dispatch.yml` | Simple 3-option deployment |
-| Minimize code duplication | `deploy-workflow-optimized.yml` | Uses reusable workflows |
-| Destroy infrastructure | `destroy-workflow.yml` | Safe destruction with confirmation |
-
-## 🏗️ Deployment Stages
-
-### Stage 1 (Parallel)
-- `_1_eks` - EKS Cluster
-- `_3_backend` - Backend infrastructure
-
-### Stage 2 (Parallel) - Depends on Stage 1
-- `_1.2.1loadbalancer` - Load Balancer
-- `_1.4_cert` - Certificate management
-
-### Stage 3 (Parallel) - Depends on Stage 2
-- `_1.2.2_nginx_ingress` - NGINX Ingress Controller
-- `_2_grafana` - Grafana monitoring
-- `_4_loki` - Loki log aggregation
-- `_7_otel_operator` - OpenTelemetry Operator
-
-### Stage 4 (Parallel) - Depends on Stage 3
-- `_8_otel_collector` - OpenTelemetry Collector
-- `_meta_monitoring` - Meta monitoring setup
-
-## 🔧 Setup
-
-### Prerequisites
-
-1. **AWS Credentials**: Set up the following secrets in your GitHub repository:
-   - `AWS_ACCESS_KEY_ID`
-   - `AWS_SECRET_ACCESS_KEY`
-
-2. **Terraform State**: Ensure your Terraform configurations use remote state (S3 + DynamoDB recommended)
-   - State paths follow pattern: `{environment}/{component}/terraform.tfstate`
-   - Enable state locking with DynamoDB
-
-3. **Directory Structure**: Your repository should have the following structure:
-   ```
-   .
-   ├── _1_eks/
-   ├── _1.2.1loadbalancer/
-   ├── _1.2.2_nginx_ingress/
-   ├── _1.4_cert/
-   ├── _2_grafana/
-   ├── _3_backend/
-   ├── _4_loki/
-   ├── _7_otel_operator/
-   ├── _8_otel_collector/
-   ├── _meta_monitoring/
-   └── .github/workflows/
-   ```
-
-4. **Terraform Module Requirements**:
-   - EKS module must output `cluster_name`
-   - All modules should support `environment` variable
-   - Use consistent provider versions
-
-### Optional Configuration
-
-- **Slack Notifications**: Add `SLACK_WEBHOOK_URL` to repository variables for deployment notifications
-- **GitHub Environments**: Create environments (development, staging, production) with protection rules
-
-## 🚀 Usage
-
-### Automatic Deployment
-
-The deployment workflow triggers automatically on:
-- Push to `main` branch
-- Pull requests to `main` branch
-
-### Manual Deployment (Workflow Dispatch)
-
-For more control over deployments, use the manual workflow dispatch:
-
-1. Go to the Actions tab in GitHub
-2. Select "EKS-With-Terraform CD (Manual/Auto)" workflow
-3. Click "Run workflow"
-4. Configure the deployment options:
-
-#### Workflow Dispatch Options
-
-| Option | Description | Default | Options |
-|--------|-------------|---------|---------|
-| **Deploy Stage** | Which stages to deploy | `all` | • `all` - Deploy all stages<br>• `stage1-only` - Only EKS & Backend<br>• `stage2-only` - Only LB & Cert<br>• `stage3-only` - Only monitoring tools<br>• `stage4-only` - Only collectors<br>• `from-stage2` - Stage 2, 3, 4<br>• `from-stage3` - Stage 3, 4<br>• `from-stage4` - Only stage 4 |
-| **Dry Run** | Plan only, no apply | `false` | `true` / `false` |
-| **Environment** | Target environment | `production` | `development`, `staging`, `production` |
-| **Skip Validation** | Skip fmt & validate | `false` | `true` / `false` |
-| **Terraform Parallelism** | Parallelism level | `20` | `10` - `50` |
-
-#### Workflow Dispatch Comparison
-
-| Feature | `deploy-workflow-dispatch.yml` | `deploy-simple-dispatch.yml` |
-|---------|-------------------------------|----------------------------|
-| **Complexity** | Full control | Simple 3-option |
-| **Stage Selection** | 8 options (granular) | All or skip monitoring |
-| **Use Case** | Complex deployments | Quick deployments |
-| **Options** | 5 parameters | 3 parameters |
-| **Best For** | DevOps teams | Developers |
-
-#### Example Scenarios
-
-**Full Production Deployment:**
-- Deploy Stage: `all`
-- Environment: `production`
-- Dry Run: `false`
-
-**Test Changes in Staging:**
-- Deploy Stage: `all`
-- Environment: `staging`
-- Dry Run: `true` (first run)
-- Dry Run: `false` (after review)
-
-**Update Only Monitoring Stack:**
-- Deploy Stage: `from-stage3`
-- Environment: `production`
-- Skip Validation: `true` (if confident)
-
-**Quick Cert Update:**
-- Deploy Stage: `stage2-only`
-- Environment: `production`ptions |
-|--------|-------------|---------|---------|
-| **Deploy Stage** | Which stages to deploy | `all` | • `all` - Deploy all stages<br>• `stage1-only` - Only EKS & Backend<br>• `stage2-only` - Only LB & Cert<br>• `stage3-only` - Only monitoring tools<br>• `stage4-only` - Only collectors<br>• `from-stage2` - Stage 2, 3, 4<br>• `from-stage3` - Stage 3, 4<br>• `from-stage4` - Only stage 4 |
-| **Dry Run** | Plan only, no apply | `false` | `true` / `false` |
-| **Environment** | Target environment | `production` | `development`, `staging`, `production` |
-| **Skip Validation** | Skip fmt & validate | `false` | `true` / `false` |
-| **Terraform Parallelism** | Parallelism level | `20` | `10` - `50` |
-
-#### Example Scenarios
-
-**Full Production Deployment:**
-- Deploy Stage: `all`
-- Environment: `production`
-- Dry Run: `false`
-
-**Test Changes in Staging:**
-- Deploy Stage: `all`
-- Environment: `staging`
-- Dry Run: `true` (first run)
-- Dry Run: `false` (after review)
-
-**Update Only Monitoring Stack:**
-- Deploy Stage: `from-stage3`
-- Environment: `production`
-- Skip Validation: `true` (if confident)
-
-**Quick Cert Update:**
-- Deploy Stage: `stage2-only`
-- Environment: `production`
-
-### Destruction
-
-To destroy the infrastructure:
-
-1. Go to Actions tab in GitHub
-2. Select "EKS-Terraform-Destroy" workflow
-3. Click "Run workflow"
-4. Type `destroy` in the confirmation field
-5. Click "Run workflow" to start destruction
-
-⚠️ **Warning**: The destroy workflow will remove ALL resources. Use with caution!
-
-### Environment-Specific Deployments
-
-When using workflow dispatch, you can deploy to different environments:
-
-```yaml
-# Development
-environment: development
-dry_run: true  # Test first
-
-# Staging  
-environment: staging
-dry_run: false
-
-# Production
-environment: production
-dry_run: false
-skip_validation: false  # Always validate prod
 ```
 
-## ⚡ Optimization Tips
+## Destroy Flow
 
-1. **Terraform Version**: Keep all modules using the same Terraform version for consistency
-2. **State Locking**: Use DynamoDB for state locking to prevent concurrent modifications
-3. **Module Outputs**: Ensure EKS module exports `cluster_name` for dependent resources
-4. **Resource Tagging**: Use consistent tags across all resources for cost tracking
-5. **Timeouts**: Consider adding timeouts for long-running resources
+When destroying infrastructure, the following order is maintained:
 
-## 🔍 Monitoring Workflow Execution
+```
+Destroy Order (Reverse of deployment)
+│
+├── 1. Monitoring Stack (if deployed)
+│   ├── Meta Monitoring
+│   ├── OTel Collector
+│   ├── OTel Operator
+│   ├── Loki
+│   ├── Grafana
+│   └── Nginx Ingress
+│
+├── 2. Secondary Infrastructure
+│   ├── Certificates
+│   └── Load Balancer
+│
+└── 3. Primary Infrastructure
+    ├── EKS Cluster ✅ DESTROYED
+    └── S3 Backend  ❌ PRESERVED (contains Terraform state)
+```
+Primary Infrastructure (Parallel)
+├── EKS Cluster (~20 min)
+└── S3 Backend (Quick) - ⚠️ NEVER DESTROYED
+    ↓
+Secondary Infrastructure (After EKS ready)
+├── Load Balancer
+└── Certificates
+    ↓
+Monitoring Stack (Optional)
+├── Nginx Ingress
+├── Grafana
+├── Loki
+├── OTel Operator
+├── OTel Collector (depends on operator)
+└── Meta Monitoring (depends on others)
+```
 
-- Check the Actions tab for real-time progress
-- Review job summaries for deployment status
-- Check Slack notifications (if configured)
-- Use workflow run logs for debugging
+## Workflows
 
-## 🛠️ Troubleshooting
+### 1. Deploy/Destroy Workflow (`deploy.yml`)
 
-### Common Issues
+A unified workflow that can either deploy or destroy your infrastructure.
 
-1. **Kubeconfig Update Fails**
-   - Ensure EKS cluster is fully created before dependent resources
-   - Check if `cluster_name` output exists in EKS module
+**Trigger**: Manual dispatch only
 
-2. **Terraform State Lock**
-   - Check DynamoDB for stuck locks
-   - Use force-unlock if necessary (with caution)
+**Inputs**:
+- `action`: Choose between `deploy` or `destroy`
+- `deploy_monitoring`: Whether to include the monitoring stack (true/false)
 
-3. **AWS Permissions**
-   - Ensure IAM role/user has necessary permissions for all resources
-   - Check CloudTrail logs for permission denials
+**Usage**:
+```bash
+# Deploy infrastructure with monitoring
+Action: deploy
+Include monitoring: true
 
-4. **Parallel Job Failures**
-   - Jobs run with `continue-on-error` for destroy operations
-   - Check individual job logs for specific errors
+# Deploy without monitoring
+Action: deploy
+Include monitoring: false
 
-## 📊 Performance Metrics
+# Destroy everything
+Action: destroy
+Include monitoring: true
+```
 
-With parallel execution, typical deployment times:
-- Stage 1: ~15-20 minutes (EKS creation)
-- Stage 2: ~5 minutes
-- Stage 3: ~5-10 minutes
-- Stage 4: ~5 minutes
-- **Total**: ~30-40 minutes (vs ~60-90 minutes sequential)
+### 2. Dedicated Destroy Workflow (`destroy.yml`) - Optional
 
-## 🔐 Security Best Practices
+A safer destroy workflow that handles components in reverse dependency order and preserves the S3 backend.
 
-1. Use OIDC for AWS authentication instead of long-lived credentials
-2. Restrict workflow permissions to minimum required
-3. Enable branch protection rules for `main`
-4. Review and approve infrastructure changes via PR process
-5. Regularly rotate AWS credentials
-6. Use separate AWS accounts for different environments
+**Trigger**: Manual dispatch only
 
-## 📝 Contributing
+**Inputs**:
+- `confirm_destroy`: Must type "DESTROY" to confirm (safety check)
 
-When adding new Terraform modules:
-1. Determine the appropriate deployment stage based on dependencies
-2. Update workflow files to include the new module
-3. Ensure module outputs are properly configured
-4. Test in a development environment first
-5. Document any new requirements or dependencies
+**What it does**:
+- Destroys all infrastructure EXCEPT the S3 backend
+- Handles components in reverse order for safety
+- Requires explicit confirmation
+
+**Usage**:
+- Navigate to Actions tab
+- Select "EKS Destroy" workflow
+- Click "Run workflow"
+- Type "DESTROY" in the confirmation field
+- Click "Run workflow"
+
+## Components
+
+### Primary Infrastructure
+1. **EKS Cluster** (`_1_eks`) - ~20 minutes to deploy, destroyed on teardown
+2. **S3 Backend** (`_3_s3_backend`) - Quick deploy, **NEVER DESTROYED** (contains Terraform state)
+
+### Secondary Infrastructure (deployed after EKS completes)
+3. **Load Balancer** (`_1.2.1load_balancer`) - depends on EKS
+4. **Certificates** (`_1.4_cert`) - depends on EKS
+
+### Monitoring Stack (optional, deployed last, destroyed first)
+1. Nginx Ingress (`_1.2.2_nginx_ingress`)
+2. Grafana (`_2_grafana`)
+3. Loki (`_4_loki`)
+4. OpenTelemetry Operator (`_7_otel_operator`)
+5. OpenTelemetry Collector (`_8_otel_collector`) - depends on operator
+6. Meta Monitoring (`_meta_monitoring`) - depends on other monitoring components
+
+## Required Secrets
+
+Configure these in your GitHub repository settings:
+- `AWS_ACCESS_KEY_ID`
+- `AWS_SECRET_ACCESS_KEY`
+
+## Important Notes
+
+- **S3 Backend is never destroyed** - It contains your Terraform state files and is preserved during destroy operations
+- The backend state file is versioned in the repository (no dynamic creation needed)
+- All resources are deployed to `ap-south-2` region
+- Terraform version `1.12.2` is used
+- Primary infrastructure (EKS + S3) deploys in parallel, then secondary infrastructure (LB + Cert) deploys after EKS completes
+- This optimization saves ~20 minutes by not blocking the loadbalancer and cert on S3 backend completion
+- Destroy operations should preferably use the dedicated destroy workflow for safety

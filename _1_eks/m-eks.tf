@@ -27,6 +27,10 @@ module "eks" {
     aws-ebs-csi-driver = {
       service_account_role_arn = module.irsa_ebs_csi.iam_role_arn
     }
+
+    aws-efs-csi-driver = {
+      service_account_role_arn = module.irsa_efs_csi.iam_role_arn
+    }
   }
   # Add this block to grant 'nimbus' user access
   # access_entries = {
@@ -47,13 +51,13 @@ module "eks" {
   eks_managed_node_groups = {
     obsrv = {
       ami_type       = "BOTTLEROCKET_ARM_64"
-      instance_types = ["t4g.large", "m6g.large", "m7g.large", "m8g.large", "m6gd.large", "m8g.large"]
+      instance_types = ["t4g.large", "m6g.large", "m7g.large", "m8g.large", "m6gd.large"]
       capacity_type  = "SPOT"
       subnet_ids     = module.vpc.private_subnets
 
-      min_size     = 2
+      min_size     = 1
       max_size     = 3
-      desired_size = 2
+      desired_size = 1
 
       #     bootstrap_extra_args = <<-EOT
       #       # The admin host container provides SSH access and runs with "superpowers".
@@ -108,15 +112,15 @@ module "eks" {
   depends_on = [module.vpc_endpoints]
 }
 
-resource "null_resource" "update_kubeconfig" {
-  provisioner "local-exec" {
-    command = <<EOT
-      aws eks update-kubeconfig --region ${var.aws_region} --name ${module.eks.cluster_name} --kubeconfig /home/nimbus/.kube/config
-      zsh -c "source ~/.zshrc"
-    EOT
-  }
-  depends_on = [module.eks]
-}
+# resource "null_resource" "update_kubeconfig" {
+#   provisioner "local-exec" {
+#     command = <<EOT
+#       aws eks update-kubeconfig --region ${var.aws_region} --name ${module.eks.cluster_name} --kubeconfig /home/gowtham/.kube/config
+#       zsh -c "source ~/.zshrc"
+#     EOT
+#   }
+#   depends_on = [module.eks]
+# }
 
 
 # resource "aws_security_group" "remote_access" {

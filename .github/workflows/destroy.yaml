@@ -1,0 +1,146 @@
+name: EKS Destroy
+run-name: "Destroy infrastructure by ${{ github.actor }}"
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm_destroy:
+        description: "Type 'DESTROY' to confirm"
+        required: true
+        type: string
+
+env:
+  AWS_REGION: ap-south-2
+  TF_VERSION: 1.12.2
+
+jobs:
+  # Validate confirmation
+  validate:
+    name: "Validate Destroy Confirmation"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check confirmation
+        run: |
+          if [ "${{ github.event.inputs.confirm_destroy }}" != "DESTROY" ]; then
+            echo "❌ Confirmation failed. You must type 'DESTROY' to proceed."
+            exit 1
+          fi
+          echo "✅ Destruction confirmed"
+
+  # Destroy monitoring first (reverse order)
+  destroy-monitoring:
+    name: "Destroy Monitoring Stack"
+    needs: validate
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        component: 
+          - meta-monitoring
+          - otel-collector
+          - otel-operator
+          - loki
+          - grafana
+          - nginx-ingress
+        include:
+          - component: meta-monitoring
+            directory: ./_meta_monitoring
+          - component: otel-collector
+            directory: ./_8_otel_collector
+          - component: otel-operator
+            directory: ./_7_otel_operator
+          - component: loki
+            directory: ./_4_loki
+          - component: grafana
+            directory: ./_2_grafana
+          - component: nginx-ingress
+            directory: ./_1.2.2_nginx_ingress
+      max-parallel: 1  # Sequential to respect dependencies
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS
+        uses: aws-actions/configure-aws-credentials@v4.0.2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Get EKS cluster name
+        id: cluster
+        run: |
+          cd _1_eks
+          terraform init
+          echo "name=$(terraform output -raw cluster_name 2>/dev/null || echo 'cluster-not-found')" >> $GITHUB_OUTPUT
+
+      - name: Update kubeconfig
+        if: steps.cluster.outputs.name != 'cluster-not-found'
+        run: |
+          aws eks update-kubeconfig --region ${{ env.AWS_REGION }} --name ${{ steps.cluster.outputs.name }}
+
+      - name: Destroy ${{ matrix.component }}
+        working-directory: ${{ matrix.directory }}
+        run: |
+          echo "💥 Destroying ${{ matrix.component }}"
+          terraform init
+          terraform destroy -auto-approve || echo "Component may already be destroyed"
+
+  # Destroy secondary infrastructure first (LoadBalancer + Cert)
+  destroy-secondary:
+    name: "Destroy Secondary Infrastructure"
+    needs: destroy-monitoring
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        component:
+          - cert
+          - loadbalancer
+        include:
+          - component: cert
+            directory: ./_1.4_cert
+          - component: loadbalancer
+            directory: ./_1.2.1load_balancer
+      max-parallel: 2
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS
+        uses: aws-actions/configure-aws-credentials@v4.0.2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Destroy ${{ matrix.component }}
+        working-directory: ${{ matrix.directory }}
+        run: |
+          echo "💥 Destroying ${{ matrix.component }}"
+          terraform init
+          terraform destroy -auto-approve
+
+  # Summary
+  summary:
+    name: "Destruction Summary"
+    needs: [destroy-monitoring, destroy-core]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Summary
+        run: |
+          echo "## Destruction Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Monitoring Stack**: ${{ needs.destroy-monitoring.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Core Infrastructure**: ${{ needs.destroy-core.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "⚠️ Infrastructure destroyed by @${{ github.actor }}" >> $GITHUB_STEP_SUMMARY
