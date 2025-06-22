@@ -13,7 +13,7 @@ spec:
   storageClassName: efs-sc
   csi:
     driver: efs.csi.aws.com
-    volumeHandle: fs-06c3404230df2ca43
+    volumeHandle: fs-09a8786b1bcecc048
 
 ---
 # PVC for logs
@@ -156,8 +156,6 @@ spec:
       mountPath: /scripts
     - name: efs-dba-logs
       mountPath: /opt/dctm/dba/log
-    - name: efs-tomcat-logs
-      mountPath: /opt/dctm/tomcat10.1.30/logs
   volumes:
   - name: log-script
     configMap:
@@ -165,9 +163,6 @@ spec:
   - name: efs-dba-logs
     persistentVolumeClaim:
       claimName: dctm-logs-pvc
-  - name: efs-tomcat-logs
-    persistentVolumeClaim:
-      claimName: dctm-logs-pvc    
 
 # ---
 # # Simple Pod with EFS mounts

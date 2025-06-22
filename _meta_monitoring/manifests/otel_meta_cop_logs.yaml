@@ -20,13 +20,13 @@ presets:
   hostMetrics:
     enabled: false
   kubernetesAttributes:
-    enabled: true
-    extractAllPodLabels: true
-    extractAllPodAnnotations: true
+    enabled: false
+    extractAllPodLabels: false
+    extractAllPodAnnotations: false
   kubeletMetrics:
     enabled: false
   kubernetesEvents:
-    enabled: true
+    enabled: false
   clusterMetrics:
     enabled: false
 
@@ -37,20 +37,17 @@ extraVolumeMounts:
   - name: varlog
     mountPath: /host/var/log
     readOnly: true
-  # - name: optlog
-  #   mountPath: /host/opt/dctm
-  #   readOnly: true     
-  # - name: merck-trusted-ca
-  #   mountPath: /etc/ssl/certs
-  #   readOnly: true
+  - name: dctm-logs
+    mountPath: /mnt/dctm-logs
+    readOnly: true
 
 extraVolumes:
   - name: varlog
     hostPath:
       path: /var/log
-  # - hostPath:
-  #     path: /opt/dctm
-  #   name: optlog    
+  - name: dctm-logs
+    persistentVolumeClaim:
+      claimName: dctm-logs-pvc    
   - name: internal-ca-volume
     secret:
       secretName: otel-internal-ca-secret
@@ -192,13 +189,12 @@ config:
           if: 'attributes["level"] != nil'
     filelog/custom:
       include:
-        - /host/opt/dctm/dba/log/MEDSDEV1.log
-        - /host/opt/dctm/tomcat10.1.30/logs/bpm.log
-        - /host/opt/dctm/tomcat10.1.30/logs/otdsauth.log
-        - /host/opt/dctm/webapps/D2/logs/D2-log4j.log
-      exclude:
-        - /var/log/pods/*nginx*/**
-        - /host/var/log/falcon-*/**
+        - - /mnt/dctm-logs/MEDSDEV1.log
+        # - /host/opt/dctm/dba/log/MEDSDEV1.log
+        # - /host/opt/dctm/tomcat10.1.30/logs/bpm.log
+        # - /host/opt/dctm/tomcat10.1.30/logs/otdsauth.log
+        # - /host/opt/dctm/webapps/D2/logs/D2-log4j.log
+      exclude: {}
       start_at: end
       include_file_path: true
       include_file_name: true
@@ -331,6 +327,8 @@ config:
           key: X-Scope-OrgId
           from_context: X-Scope-OrgId
   exporters:
+    debug: 
+      verbosity: detailed 
     otlp:
       endpoint: "https://otel.gowthamvandana.com:443"
       headers:
@@ -348,9 +346,9 @@ config:
     extensions: [health_check, headers_setter]
     pipelines:
       logs:
-        receivers: [filelog/k8s_pods, filelog/custom, k8s_events]
-        processors: [k8sattributes, resource, resourcedetection, filter/noise, batch]
-        exporters: [otlp]
+        receivers: [filelog/custom]
+        processors: [resource, filter/noise, batch]
+        exporters: [debug, otlp]
       metrics: null
       traces: null
 

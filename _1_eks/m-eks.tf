@@ -55,9 +55,9 @@ module "eks" {
       capacity_type  = "SPOT"
       subnet_ids     = module.vpc.private_subnets
 
-      min_size     = 1
-      max_size     = 3
-      desired_size = 1
+      min_size     = 2
+      max_size     = 2
+      desired_size = 2
 
       #     bootstrap_extra_args = <<-EOT
       #       # The admin host container provides SSH access and runs with "superpowers".
