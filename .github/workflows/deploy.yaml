@@ -1,17 +1,9 @@
-name: EKS Deploy/Destroy
-run-name: "${{ github.event.inputs.action }} by ${{ github.actor }}"
+name: EKS Deploy
+run-name: "Deploy infrastructure by ${{ github.actor }}"
 
 on:
   workflow_dispatch:
     inputs:
-      action:
-        description: "Action to perform"
-        required: true
-        default: "deploy"
-        type: choice
-        options:
-          - deploy
-          - destroy
       deploy_monitoring:
         description: "Include monitoring stack?"
         required: true
@@ -23,9 +15,9 @@ env:
   TF_VERSION: 1.12.2
 
 jobs:
-  # Deploy/Destroy primary infrastructure (EKS + Backend)
+  # Deploy EKS and backend first
   primary-infrastructure:
-    name: "${{ github.event.inputs.action }} Primary Infrastructure"
+    name: "Deploy Primary Infrastructure"
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -37,10 +29,10 @@ jobs:
             directory: ./_3_s3_backend
       max-parallel: 2
     steps:
-      - name: Checkout
+      - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Configure AWS
+      - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4.0.2
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
@@ -52,32 +44,18 @@ jobs:
         with:
           terraform_version: ${{ env.TF_VERSION }}
 
-      - name: "${{ github.event.inputs.action }} ${{ matrix.component }}"
+      - name: Deploy ${{ matrix.component }}
         working-directory: ${{ matrix.directory }}
         run: |
-          echo "🚀 ${{ github.event.inputs.action }} ${{ matrix.component }}"
+          echo "🚀 Deploying ${{ matrix.component }}"
           
-          # Skip S3 backend destruction
-          if [ "${{ github.event.inputs.action }}" == "destroy" ] && [ "${{ matrix.component }}" == "backend" ]; then
-            echo "⚠️ Skipping S3 backend destruction "
-            exit 0
-          fi
-          
-          # Initialize
           terraform init
-          
-          if [ "${{ github.event.inputs.action }}" == "deploy" ]; then
-            # Plan and Apply
-            terraform plan -out=tfplan
-            terraform apply -auto-approve tfplan
-          else
-            # Destroy
-            terraform destroy -auto-approve
-          fi
+          terraform plan -out=tfplan
+          terraform apply -auto-approve tfplan
 
-  # Deploy/Destroy secondary infrastructure (LoadBalancer + Cert)
+  # Deploy secondary infrastructure (load balancer + cert)
   secondary-infrastructure:
-    name: "${{ github.event.inputs.action }} Secondary Infrastructure"
+    name: "Deploy Secondary Infrastructure"
     needs: primary-infrastructure
     runs-on: ubuntu-latest
     strategy:
@@ -90,10 +68,10 @@ jobs:
             directory: ./_1.4_cert
       max-parallel: 2
     steps:
-      - name: Checkout
+      - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Configure AWS
+      - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4.0.2
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
@@ -116,19 +94,14 @@ jobs:
         run: |
           aws eks update-kubeconfig --region ${{ env.AWS_REGION }} --name ${{ steps.cluster.outputs.name }}
 
-      - name: "${{ github.event.inputs.action }} ${{ matrix.component }}"
+      - name: Deploy ${{ matrix.component }}
         working-directory: ${{ matrix.directory }}
         run: |
-          echo "🚀 ${{ github.event.inputs.action }} ${{ matrix.component }}"
+          echo "🚀 Deploying ${{ matrix.component }}"
           
           terraform init
-          
-          if [ "${{ github.event.inputs.action }}" == "deploy" ]; then
-            terraform plan -out=tfplan
-            terraform apply -auto-approve tfplan
-          else
-            terraform destroy -auto-approve
-          fi
+          terraform plan -out=tfplan
+          terraform apply -auto-approve tfplan
 
   # Deploy/Destroy monitoring stack
   monitoring-stack:
@@ -164,10 +137,10 @@ jobs:
         if: matrix.order > 1 && github.event.inputs.action == 'deploy'
         run: sleep 30
 
-      - name: Checkout
+      - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Configure AWS
+      - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4.0.2
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
@@ -190,40 +163,33 @@ jobs:
         run: |
           aws eks update-kubeconfig --region ${{ env.AWS_REGION }} --name ${{ steps.cluster.outputs.name }}
 
-      - name: "${{ github.event.inputs.action }} ${{ matrix.component }}"
+      - name: Deploy ${{ matrix.component }}
         working-directory: ${{ matrix.directory }}
         run: |
-          echo "🚀 ${{ github.event.inputs.action }} ${{ matrix.component }}"
+          echo "🚀 Deploying ${{ matrix.component }}"
           
           terraform init
-          
-          if [ "${{ github.event.inputs.action }}" == "deploy" ]; then
-            terraform plan -out=tfplan
-            terraform apply -auto-approve tfplan
-          else
-            terraform destroy -auto-approve
-          fi
+          terraform plan -out=tfplan
+          terraform apply -auto-approve tfplan
 
   # Summary
   summary:
-    name: "Summary"
+    name: "Deployment Summary"
     needs: [primary-infrastructure, secondary-infrastructure, monitoring-stack]
     if: always()
     runs-on: ubuntu-latest
     steps:
-      - name: Summary
+      - name: Deployment Summary
         run: |
-          echo "## ${{ github.event.inputs.action }} Summary" >> $GITHUB_STEP_SUMMARY
+          echo "## Deployment Summary" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Action**: ${{ github.event.inputs.action }}" >> $GITHUB_STEP_SUMMARY
           echo "**Include Monitoring**: ${{ github.event.inputs.deploy_monitoring }}" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Primary Infrastructure (EKS + Backend)**: ${{ needs.primary-infrastructure.result }}" >> $GITHUB_STEP_SUMMARY
           echo "**Secondary Infrastructure (LB + Cert)**: ${{ needs.secondary-infrastructure.result }}" >> $GITHUB_STEP_SUMMARY
-          echo "**Monitoring Stack**: ${{ needs.monitoring-stack.result }}" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          if [ "${{ github.event.inputs.action }}" == "destroy" ]; then
-            echo "ℹ️ **Note**: S3 backend preserved (contains Terraform state)" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
+          if [[ "${{ github.event.inputs.deploy_monitoring }}" == "true" ]]; then
+            echo "**Monitoring Stack**: ${{ needs.monitoring-stack.result }}" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "**Monitoring Stack**: Skipped" >> $GITHUB_STEP_SUMMARY
           fi
-          echo "Executed by @${{ github.actor }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "🚀 Infrastructure deployed by @${{ github.actor }}" >> $GITHUB_STEP_SUMMARY
