@@ -53,6 +53,25 @@ extraVolumes:
       secretName: otel-internal-ca-secret
       defaultMode: 444
 
+extraContainers: 
+  - name: debug-container
+    image: busybox:latest  # You can use any image you need for debugging
+    command:
+      - "sh"
+      - "-c"
+      - "tail -f /dev/null"  # Keep the container running for debugging
+    volumeMounts:
+      - name: dctm-logs
+        mountPath: /mnt/dctm-logs  # Mount the same volume as the OpenTelemetry Collector
+    resources:
+      limits:
+        memory: 200Mi
+        cpu: 500m
+      requests:
+        memory: 100Mi
+        cpu: 250m
+
+
 config:
   receivers:
     jaeger: null
@@ -189,12 +208,9 @@ config:
           if: 'attributes["level"] != nil'
     filelog/custom:
       include:
-        - - /mnt/dctm-logs/MEDSDEV1.log
-        # - /host/opt/dctm/dba/log/MEDSDEV1.log
-        # - /host/opt/dctm/tomcat10.1.30/logs/bpm.log
-        # - /host/opt/dctm/tomcat10.1.30/logs/otdsauth.log
-        # - /host/opt/dctm/webapps/D2/logs/D2-log4j.log
-      exclude: {}
+        - /mnt/dctm-logs/MEDSDEV1.log
+      exclude:
+        - /var/log/pods/*/otel-collector/*.log
       start_at: end
       include_file_path: true
       include_file_name: true
@@ -204,60 +220,24 @@ config:
           routes:
             - output: medsdev-log
               expr: 'attributes["log.file.path"] matches ".*MEDSDEV1.log$"'
-            - output: bpm-log
-              expr: 'body matches "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2},\\d{3} \\w+ \\[.*?\\] \\[.*?\\] - .*"'
-            - output: otdsauth-log
-              expr: 'body matches "^\\d{1,2} \\w+ \\d{4} \\d{2}:\\d{2}:\\d{2},\\d{3} \\w+ \\[.*?\\] .*? - .*"'
-            - output: log4j-log
-              expr: 'body matches "^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}\\.\\d{3} \\[\\w+\\] \\[.*?\\] .*?: .*"'  
-            # - output: log4j-log
-            #   expr: 'attributes["log.file.path"] matches ".*D2-log4j.log$"'
-
-        - type: recombine
-          id: multiline-combiner
-          combine_field: body
-          is_first_entry: 'body matches "^\\d{4}-\\d{2}-\\d{2}T?\\d{2}:\\d{2}:\\d{2}"'
-          timeout: 5s
-
-        - type: regex_parser
+        - type: regex_parser 
           id: medsdev-log
-          regex: '^(?P<timestamp>\S+)\t(?P<thread>\S+)\t(?P<session_id>\S+)\t(?P<message>.+)$'
+          regex: '^(?P<timestamp>\S+T\S+)\s*(?P<process_id>\d+)\[(?P<thread_id>\d+)\]\s*(?P<session_id>\S+)\s*(?P<level>\S+)(?:\s*[:\s]*(?P<message>.*))?$'
           timestamp:
             parse_from: attributes.timestamp
             layout: '%Y-%m-%dT%H:%M:%S.%f'
           parse_to: attributes
-
-        - type: regex_parser
-          id: bpm-log
-          regex: '^(?P<timestamp>\S+ \S+) (?P<severity>\w+) \[(?P<thread>[^\]]+)\] \[(?P<class>[^\]]+)\] - (?P<message>.+)$'
-          timestamp:
-            parse_from: attributes.timestamp
-            layout: '%Y-%m-%dT%H:%M:%S,%L'
-          parse_to: attributes
-
-        - type: regex_parser
-          id: otdsauth-log
-          regex: '^(?P<timestamp>\d{1,2} \w+ \d{4} \d{2}:\d{2}:\d{2},\d{3}) (?P<severity>\w+) \[(?P<thread>[^\]]+)\] (?P<class>[^ ]+) - (?P<message>.+)$'
-          timestamp:
-            parse_from: attributes.timestamp
-            layout: '%d %b %Y %H:%M:%S,%L'
-          parse_to: attributes
-
-        - type: regex_parser
-          id: log4j-log
-          regex: '^(?P<timestamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3}) \[(?P<severity>\w+) ?\] \[(?P<thread>[^\]]+)\] (?P<class>[^:]+): (?P<message>.+)$'
-          timestamp:
-            parse_from: attributes.timestamp
-            layout: '%Y-%m-%d %H:%M:%S.%L'
-          parse_to: attributes 
-
         - type: severity_parser
-          parse_from: attributes.severity
-
+          parse_from: attributes.level
         - type: move
           from: attributes.message
           to: body
-         
+        - type: move
+          from: attributes.namespace
+          to: resource["namespace"]
+        - type: move
+          from: attributes.pod_name
+          to: resource["pod"]  
         - type: move
           from: attributes["log.file.path"]
           to: resource["log.file.path"]
@@ -265,7 +245,8 @@ config:
         - type: move
           from: attributes["log.file.name"]
           to: resource["log.file.name"]
-          if: 'attributes["log.file.name"] != nil'             
+          if: 'attributes["log.file.name"] != nil'
+
 
   processors:
     k8sattributes:
@@ -327,8 +308,8 @@ config:
           key: X-Scope-OrgId
           from_context: X-Scope-OrgId
   exporters:
-    debug: 
-      verbosity: detailed 
+    debug:
+      verbosity: detailed
     otlp:
       endpoint: "https://otel.gowthamvandana.com:443"
       headers:
@@ -342,7 +323,7 @@ config:
       metrics:
         level: detailed
       logs:
-        level: WARN
+        level: debug
     extensions: [health_check, headers_setter]
     pipelines:
       logs:

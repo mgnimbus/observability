@@ -13,7 +13,7 @@ spec:
   storageClassName: efs-sc
   csi:
     driver: efs.csi.aws.com
-    volumeHandle: fs-09a8786b1bcecc048
+    volumeHandle: fs-075172fd8351b4948
 
 ---
 # PVC for logs
@@ -41,66 +41,8 @@ data:
   generate-logs.sh: |
     #!/bin/bash
     
-    # Create log directories
-    echo "Creating log directories..."
-    mkdir -p /opt/dctm/dba/log
-    mkdir -p /opt/dctm/tomcat10.1.30/logs
-    
-    # Function to generate BPM logs
-    generate_bpm_log() {
-      local timestamp=$(date '+%Y-%m-%dT%H:%M:%S,%3N')
-      local levels=("ERROR" "INFO" "WARN" "DEBUG")
-      local level=${levels[$RANDOM % ${#levels[@]}]}
-      local threads=("File Watcher" "main" "Timer-32" "http-nio-9080-exec-7")
-      local thread=${threads[$RANDOM % ${#threads[@]}]}
-      local classes=("com.documentum.fc.common.DfPreferences" "com.documentum.fc.client.security.impl.JKSKeystoreUtilForDfc" "com.documentum.fc.impl.RuntimeContext")
-      local class=${classes[$RANDOM % ${#classes[@]}]}
-      
-      case $level in
-        "ERROR")
-          echo "$timestamp ERROR [$thread] [$class] - [DFC_PREFERENCE_BAD_VALUE] Bad value for preference \"dfc.security.keystore.file\", value=\"/opt/dctm/tomcat10.1.30/webapps/bpm/WEB-INF/classes/dfc.keystore\"" >> /opt/dctm/tomcat10.1.30/logs/bpm.log
-          echo "com.documentum.fc.client.DfAttributeValueException: [DFC_OBJECT_BADATTRVALUE] Directory doesn't exist" >> /opt/dctm/tomcat10.1.30/logs/bpm.log
-          echo "    at com.documentum.fc.client.attributehandler.DfFileFilter.verifyExistence(DfFileFilter.java:54) ~[dfc.jar:?]" >> /opt/dctm/tomcat10.1.30/logs/bpm.log
-          ;;
-        "INFO")
-          echo "$timestamp  INFO [$thread] [$class] - [DFC_SECURITY_IDENTITY_LOADED] Loaded identity from keystore, DFC alias=dfc, identity=dfc_0iL8s6h3x0Ni3pgrsDbvykHfUd0a" >> /opt/dctm/tomcat10.1.30/logs/bpm.log
-          ;;
-        "WARN")
-          echo "$timestamp  WARN [$thread] [$class] - [DFC_BOF_COULDNT_CONNECT_TO_REGISTRY] Unable to connect to module registry, docbase name MEDSDEV1 username dm_bof_registry." >> /opt/dctm/tomcat10.1.30/logs/bpm.log
-          ;;
-        "DEBUG")
-          echo "$timestamp DEBUG [$thread] [$class] - Processing request for session validation" >> /opt/dctm/tomcat10.1.30/logs/bpm.log
-          ;;
-      esac
-    }
-    
-    # Function to generate OTDS Auth logs
-    generate_otdsauth_log() {
-      local day=$(date '+%-d')
-      local timestamp=$(printf "%2d %s" "$day" "$(date '+%b %Y %H:%M:%S,%3N')")
-      local levels=("DEBUG" "INFO" "WARN" "ERROR")
-      local level=${levels[$RANDOM % ${#levels[@]}]}
-      local threads=("http-nio-9080-exec-7" "http-nio-9080-exec-5" "main" "pool-1-thread-1")
-      local thread=${threads[$RANDOM % ${#threads[@]}]}
-      local classes=("com.documentum.cs.otds.license.util.DocbaseUtil" "com.documentum.cs.otds.security.SignatureValidator")
-      local class=${classes[$RANDOM % ${#classes[@]}]}
-      
-      case $level in
-        "DEBUG")
-          echo "  $timestamp DEBUG [$thread] $class - Getting docbase map" >> /opt/dctm/tomcat10.1.30/logs/otdsauth.log
-          ;;
-        "INFO")
-          echo "  $timestamp  INFO [$thread] $class - DocbaseMap [MEDSDEV1]" >> /opt/dctm/tomcat10.1.30/logs/otdsauth.log
-          ;;
-        "WARN")
-          echo "  $timestamp  WARN [$thread] $class - Certificate validation warning: certificate expiry date approaching" >> /opt/dctm/tomcat10.1.30/logs/otdsauth.log
-          ;;
-        "ERROR")
-          echo "  $timestamp ERROR [$thread] $class - Failed to validate signature: invalid key format" >> /opt/dctm/tomcat10.1.30/logs/otdsauth.log
-          ;;
-      esac
-    }
-    
+    mkdir -p /opt/dctm/dba/log  # Ensure directory exists
+
     # Function to generate MEDSDEV1 logs
     generate_medsdev_log() {
       local timestamp=$(date '+%Y-%m-%dT%H:%M:%S.%6N')
@@ -108,32 +50,62 @@ data:
       local session_id=$(printf '%016x' $RANDOM$RANDOM)
       local levels=("info" "warning" "error")
       local level=${levels[$RANDOM % ${#levels[@]}]}
-      
+
       case $level in
         "info")
-          echo "$timestamp  $pid[$pid]  $session_id    [DM_SERVER_I_LISTENING]info:  \"The server is listening on network address (Service Name: dm_MEDSDEV1, Host Name: dcs-ora-0 :V4 IP)\"" >> /opt/dctm/dba/log/MEDSDEV1.log
+          local messages=(
+            "[DM_SERVER_I_LISTENING]info:  \"The server is listening on network address (Service Name: dm_MEDSDEV1, Host Name: dcs-ora-0 :V4 IP)\""
+            "[DM_WORKFLOW_I_AGENT_START]info:  \"Workflow agent master (pid : $pid, session $session_id) is started sucessfully.\""
+            "[DM_SERVER_I_START]info:  \"Sending Initial Docbroker check-point \"" 
+            "[DM_SESSION_I_SESSION_START]info:  \"Session $session_id started for user dmadmin.\""
+            "[DM_DOCBROKER_I_PROJECTING]info:  \"Sending information to Docbroker located on host (dbr-0.dbr.meds-dev1.svc.cluster.local) with port (1490).  Information: (Config(MEDSDEV1), Proximity(1), Status(Open), Dormancy Status(Active)).\""
+          )
+          local message=${messages[$RANDOM % ${#messages[@]}]}
+          echo "$timestamp  $pid[$pid]  $session_id    $message" >> /opt/dctm/dba/log/MEDSDEV1.log
           ;;
         "warning")
           echo "[Warning]Hostname Resolution for IPV6 failed: -2 for host dcs-ora-0" >> /opt/dctm/dba/log/MEDSDEV1.log
           ;;
         "error")
-          echo "$timestamp  $pid[$pid]  $session_id    [DM_SESSION_E_AUTH_FAIL]error:  \"Authentication failed for user testuser\"" >> /opt/dctm/dba/log/MEDSDEV1.log
+          local messages=(
+            "[DM_SESSION_E_AUTH_FAIL]error:  \"Authentication failed for user testuser\""
+            "[DM_QUERY_E_SYNTAX]error:  \"Invalid DQL syntax in query\""
+          )
+          local message=${messages[$RANDOM % ${#messages[@]}]}
+          echo "$timestamp  $pid[$pid]  $session_id    $message" >> /opt/dctm/dba/log/MEDSDEV1.log
           ;;
       esac
+
+      # Sometimes add Java tool options or trace messages
+      if [ $((RANDOM % 5)) -eq 0 ]; then
+        echo "Picked up JAVA_TOOL_OPTIONS: -Djdk.util.zip.disableZip64ExtraFieldValidation=true -Djava.locale.providers=COMPAT,SPI --add-opens=java.base/java.lang=ALL-UNNAMED" >> /opt/dctm/dba/log/MEDSDEV1.log
+      fi
+
+      if [ $((RANDOM % 4)) -eq 0 ]; then
+        echo "$timestamp  $pid[$pid]  $session_id    JMS DO_METHOD TRACE LAUNCH: user: dmadmin, session id: $session_id, JMS id: 0802e72380001234, method: D2ImportMassCreateMethod" >> /opt/dctm/dba/log/MEDSDEV1.log
+      fi
+
+      # Sometimes add logs without message codes
+      if [ $((RANDOM % 3)) -eq 0 ]; then
+        echo "$timestamp  $pid[$pid]  $session_id    info: Processing background job queue" >> /opt/dctm/dba/log/MEDSDEV1.log
+      fi
     }
-    
-    # Main loop
+
+    # Main loop to generate logs
     echo "Starting log generation..."
-    echo "Log files:"
-    echo "  - /opt/dctm/dba/log/MEDSDEV1.log"
-    echo "  - /opt/dctm/tomcat10.1.30/logs/bpm.log"
-    echo "  - /opt/dctm/tomcat10.1.30/logs/otdsauth.log"
-    
+    echo "Creating log files:"
+    echo "  - MEDSDEV1: /opt/dctm/dba/log/MEDSDEV1.log"
+
+    # Create initial log entries
+    generate_medsdev_log
+
     while true; do
-      generate_bpm_log
-      generate_otdsauth_log
-      generate_medsdev_log
-      sleep 2
+      if [ $((RANDOM % 3)) -eq 0 ]; then
+        generate_medsdev_log
+      fi
+
+      # Sleep for a random interval between 1-5 seconds
+      sleep $((RANDOM % 5 + 1))
     done
 ---
 apiVersion: v1

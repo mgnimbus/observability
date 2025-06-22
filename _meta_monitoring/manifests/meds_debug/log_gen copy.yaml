@@ -1,0 +1,97 @@
+# Simple PV for EFS
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: dctm-logs-pv
+spec:
+  capacity:
+    storage: 10Gi
+  volumeMode: Filesystem
+  accessModes:
+    - ReadWriteMany
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: efs-sc
+  csi:
+    driver: efs.csi.aws.com
+    volumeHandle: fs-075172fd8351b4948
+
+---
+# PVC for logs
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: dctm-logs-pvc
+  namespace: default
+spec:
+  accessModes:
+    - ReadWriteMany
+  storageClassName: efs-sc
+  resources:
+    requests:
+      storage: 10Gi
+
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: dctm-log-generator
+  namespace: default
+spec:
+  containers:
+  - name: log-generator
+    image: ubuntu:latest
+    command: ["/bin/bash", "-c"]
+    args:
+      - |
+        cp /scripts/generate-logs.sh /tmp/generate-logs.sh
+        chmod +x /tmp/generate-logs.sh
+        exec /tmp/generate-logs.sh
+    volumeMounts:
+    - name: log-script
+      mountPath: /scripts
+    - name: efs-dba-logs
+      mountPath: /opt/dctm/dba/log
+  volumes:
+  - name: log-script
+    configMap:
+      name: log-generator-script
+  - name: efs-dba-logs
+    persistentVolumeClaim:
+      claimName: dctm-logs-pvc
+
+# ---
+# # Simple Pod with EFS mounts
+# apiVersion: v1
+# kind: Pod
+# metadata:
+#   name: dctm-log-generator
+#   namespace: default
+# spec:
+#   containers:
+#   - name: log-generator
+#     image: ubuntu:latest
+#     command: ["/bin/bash", "-c"]
+#     args:
+#       - |
+#         cp /scripts/generate-logs.sh /tmp/generate-logs.sh
+#         chmod +x /tmp/generate-logs.sh
+#         exec /tmp/generate-logs.sh
+#     volumeMounts:
+#     - name: log-script
+#       mountPath: /scripts
+#     - name: efs-dba-logs
+#       mountPath: /opt/dctm/dba/log
+#     - name: efs-tomcat-logs
+#       mountPath: /opt/dctm/tomcat10.1.30/logs
+#   volumes:
+#   - name: log-script
+#     configMap:
+#       name: log-generator-script
+#   - name: efs-dba-logs
+#     persistentVolumeClaim:
+#       claimName: dctm-logs-pvc
+#       subPath: dba-logs
+#   - name: efs-tomcat-logs
+#     persistentVolumeClaim:
+#       claimName: dctm-logs-pvc
+#       subPath: tomcat-logs
