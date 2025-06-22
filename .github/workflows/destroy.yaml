@@ -88,9 +88,9 @@ jobs:
         run: |
           echo "💥 Destroying ${{ matrix.component }}"
           terraform init
-          terraform destroy -auto-approve || echo "Component may already be destroyed"
+          terraform destroy -auto-approve || echo "⚠️ Component may already be destroyed"
 
-  # Destroy secondary infrastructure first (LoadBalancer + Cert)
+  # Destroy secondary infrastructure (Cert + LoadBalancer)
   destroy-secondary:
     name: "Destroy Secondary Infrastructure"
     needs: destroy-monitoring
@@ -127,20 +127,65 @@ jobs:
         run: |
           echo "💥 Destroying ${{ matrix.component }}"
           terraform init
-          terraform destroy -auto-approve
+          terraform destroy -auto-approve || echo "⚠️ Component may already be destroyed"
+
+  # Destroy primary infrastructure (EKS + Backend)
+  destroy-core:
+    name: "Destroy Core Infrastructure"
+    needs: [destroy-monitoring, destroy-secondary]
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        component:
+          - backend
+          - eks
+        include:
+          - component: backend
+            directory: ./_3_s3_backend
+          - component: eks
+            directory: ./_1_eks
+      max-parallel: 1
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS
+        uses: aws-actions/configure-aws-credentials@v4.0.2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Destroy ${{ matrix.component }}
+        working-directory: ${{ matrix.directory }}
+        run: |
+          echo "💥 Destroying ${{ matrix.component }}"
+          terraform init
+
+          if [ "${{ matrix.component }}" == "backend" ]; then
+            echo "⚠️ Skipping backend destruction (Terraform state preserved)"
+            exit 0
+          fi
+
+          terraform destroy -auto-approve || echo "⚠️ Component may already be destroyed"
 
   # Summary
   summary:
     name: "Destruction Summary"
-    needs: [destroy-monitoring, destroy-core]
+    needs: [destroy-monitoring, destroy-secondary, destroy-core]
     if: always()
     runs-on: ubuntu-latest
     steps:
       - name: Summary
         run: |
           echo "## Destruction Summary" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Monitoring Stack**: ${{ needs.destroy-monitoring.result }}" >> $GITHUB_STEP_SUMMARY
-          echo "**Core Infrastructure**: ${{ needs.destroy-core.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Secondary Infrastructure**: ${{ needs.destroy-secondary.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Core Infrastructure (EKS + Backend)**: ${{ needs.destroy-core.result }}" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "⚠️ Infrastructure destroyed by @${{ github.actor }}" >> $GITHUB_STEP_SUMMARY

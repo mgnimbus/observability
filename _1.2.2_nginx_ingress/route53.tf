@@ -24,14 +24,22 @@ locals {
   lb_arns   = tolist(data.aws_lbs.obsrv.arns)
 }
 
+resource "time_sleep" "wait_30_seconds" {
+  depends_on = [module.route53_zone]
+
+  create_duration = "60s"
+}
+
+
 data "aws_lb" "selected" {
+  depends_on = [time_sleep.wait_30_seconds]
   for_each = { for idx, arn in local.lb_arns : "lb-${idx}" => arn }
   arn      = each.value
 }
 
 
 module "route53_records" {
-  depends_on = [module.route53_zone]
+  depends_on = [module.route53_zone, time_sleep.wait_30_seconds]
   source     = "terraform-aws-modules/route53/aws//modules/records"
   version    = "~> 5.0"
 

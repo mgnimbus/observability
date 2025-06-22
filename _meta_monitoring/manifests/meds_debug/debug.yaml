@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: efs-debugger
+spec:
+  containers:
+  - name: shell
+    image: amazonlinux
+    command: ["sleep", "3600"]
+    volumeMounts:
+    - name: efs-volume
+      mountPath: /mnt/efs
+  volumes:
+  - name: efs-volume
+    persistentVolumeClaim:
+      claimName: dctm-logs-pvc
+  restartPolicy: Never

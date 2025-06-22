@@ -1,0 +1,207 @@
+# Simple PV for EFS
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: dctm-logs-pv
+spec:
+  capacity:
+    storage: 10Gi
+  volumeMode: Filesystem
+  accessModes:
+    - ReadWriteMany
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: efs-sc
+  csi:
+    driver: efs.csi.aws.com
+    volumeHandle: fs-06c3404230df2ca43
+
+---
+# PVC for logs
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: dctm-logs-pvc
+  namespace: default
+spec:
+  accessModes:
+    - ReadWriteMany
+  storageClassName: efs-sc
+  resources:
+    requests:
+      storage: 10Gi
+
+---
+# ConfigMap with log generator script
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: log-generator-script
+  namespace: default
+data:
+  generate-logs.sh: |
+    #!/bin/bash
+    
+    # Create log directories
+    echo "Creating log directories..."
+    mkdir -p /opt/dctm/dba/log
+    mkdir -p /opt/dctm/tomcat10.1.30/logs
+    
+    # Function to generate BPM logs
+    generate_bpm_log() {
+      local timestamp=$(date '+%Y-%m-%dT%H:%M:%S,%3N')
+      local levels=("ERROR" "INFO" "WARN" "DEBUG")
+      local level=${levels[$RANDOM % ${#levels[@]}]}
+      local threads=("File Watcher" "main" "Timer-32" "http-nio-9080-exec-7")
+      local thread=${threads[$RANDOM % ${#threads[@]}]}
+      local classes=("com.documentum.fc.common.DfPreferences" "com.documentum.fc.client.security.impl.JKSKeystoreUtilForDfc" "com.documentum.fc.impl.RuntimeContext")
+      local class=${classes[$RANDOM % ${#classes[@]}]}
+      
+      case $level in
+        "ERROR")
+          echo "$timestamp ERROR [$thread] [$class] - [DFC_PREFERENCE_BAD_VALUE] Bad value for preference \"dfc.security.keystore.file\", value=\"/opt/dctm/tomcat10.1.30/webapps/bpm/WEB-INF/classes/dfc.keystore\"" >> /opt/dctm/tomcat10.1.30/logs/bpm.log
+          echo "com.documentum.fc.client.DfAttributeValueException: [DFC_OBJECT_BADATTRVALUE] Directory doesn't exist" >> /opt/dctm/tomcat10.1.30/logs/bpm.log
+          echo "    at com.documentum.fc.client.attributehandler.DfFileFilter.verifyExistence(DfFileFilter.java:54) ~[dfc.jar:?]" >> /opt/dctm/tomcat10.1.30/logs/bpm.log
+          ;;
+        "INFO")
+          echo "$timestamp  INFO [$thread] [$class] - [DFC_SECURITY_IDENTITY_LOADED] Loaded identity from keystore, DFC alias=dfc, identity=dfc_0iL8s6h3x0Ni3pgrsDbvykHfUd0a" >> /opt/dctm/tomcat10.1.30/logs/bpm.log
+          ;;
+        "WARN")
+          echo "$timestamp  WARN [$thread] [$class] - [DFC_BOF_COULDNT_CONNECT_TO_REGISTRY] Unable to connect to module registry, docbase name MEDSDEV1 username dm_bof_registry." >> /opt/dctm/tomcat10.1.30/logs/bpm.log
+          ;;
+        "DEBUG")
+          echo "$timestamp DEBUG [$thread] [$class] - Processing request for session validation" >> /opt/dctm/tomcat10.1.30/logs/bpm.log
+          ;;
+      esac
+    }
+    
+    # Function to generate OTDS Auth logs
+    generate_otdsauth_log() {
+      local day=$(date '+%-d')
+      local timestamp=$(printf "%2d %s" "$day" "$(date '+%b %Y %H:%M:%S,%3N')")
+      local levels=("DEBUG" "INFO" "WARN" "ERROR")
+      local level=${levels[$RANDOM % ${#levels[@]}]}
+      local threads=("http-nio-9080-exec-7" "http-nio-9080-exec-5" "main" "pool-1-thread-1")
+      local thread=${threads[$RANDOM % ${#threads[@]}]}
+      local classes=("com.documentum.cs.otds.license.util.DocbaseUtil" "com.documentum.cs.otds.security.SignatureValidator")
+      local class=${classes[$RANDOM % ${#classes[@]}]}
+      
+      case $level in
+        "DEBUG")
+          echo "  $timestamp DEBUG [$thread] $class - Getting docbase map" >> /opt/dctm/tomcat10.1.30/logs/otdsauth.log
+          ;;
+        "INFO")
+          echo "  $timestamp  INFO [$thread] $class - DocbaseMap [MEDSDEV1]" >> /opt/dctm/tomcat10.1.30/logs/otdsauth.log
+          ;;
+        "WARN")
+          echo "  $timestamp  WARN [$thread] $class - Certificate validation warning: certificate expiry date approaching" >> /opt/dctm/tomcat10.1.30/logs/otdsauth.log
+          ;;
+        "ERROR")
+          echo "  $timestamp ERROR [$thread] $class - Failed to validate signature: invalid key format" >> /opt/dctm/tomcat10.1.30/logs/otdsauth.log
+          ;;
+      esac
+    }
+    
+    # Function to generate MEDSDEV1 logs
+    generate_medsdev_log() {
+      local timestamp=$(date '+%Y-%m-%dT%H:%M:%S.%6N')
+      local pid=$((RANDOM % 9000 + 1000))
+      local session_id=$(printf '%016x' $RANDOM$RANDOM)
+      local levels=("info" "warning" "error")
+      local level=${levels[$RANDOM % ${#levels[@]}]}
+      
+      case $level in
+        "info")
+          echo "$timestamp  $pid[$pid]  $session_id    [DM_SERVER_I_LISTENING]info:  \"The server is listening on network address (Service Name: dm_MEDSDEV1, Host Name: dcs-ora-0 :V4 IP)\"" >> /opt/dctm/dba/log/MEDSDEV1.log
+          ;;
+        "warning")
+          echo "[Warning]Hostname Resolution for IPV6 failed: -2 for host dcs-ora-0" >> /opt/dctm/dba/log/MEDSDEV1.log
+          ;;
+        "error")
+          echo "$timestamp  $pid[$pid]  $session_id    [DM_SESSION_E_AUTH_FAIL]error:  \"Authentication failed for user testuser\"" >> /opt/dctm/dba/log/MEDSDEV1.log
+          ;;
+      esac
+    }
+    
+    # Main loop
+    echo "Starting log generation..."
+    echo "Log files:"
+    echo "  - /opt/dctm/dba/log/MEDSDEV1.log"
+    echo "  - /opt/dctm/tomcat10.1.30/logs/bpm.log"
+    echo "  - /opt/dctm/tomcat10.1.30/logs/otdsauth.log"
+    
+    while true; do
+      generate_bpm_log
+      generate_otdsauth_log
+      generate_medsdev_log
+      sleep 2
+    done
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: dctm-log-generator
+  namespace: default
+spec:
+  containers:
+  - name: log-generator
+    image: ubuntu:latest
+    command: ["/bin/bash", "-c"]
+    args:
+      - |
+        cp /scripts/generate-logs.sh /tmp/generate-logs.sh
+        chmod +x /tmp/generate-logs.sh
+        exec /tmp/generate-logs.sh
+    volumeMounts:
+    - name: log-script
+      mountPath: /scripts
+    - name: efs-dba-logs
+      mountPath: /opt/dctm/dba/log
+    - name: efs-tomcat-logs
+      mountPath: /opt/dctm/tomcat10.1.30/logs
+  volumes:
+  - name: log-script
+    configMap:
+      name: log-generator-script
+  - name: efs-dba-logs
+    persistentVolumeClaim:
+      claimName: dctm-logs-pvc
+  - name: efs-tomcat-logs
+    persistentVolumeClaim:
+      claimName: dctm-logs-pvc    
+
+# ---
+# # Simple Pod with EFS mounts
+# apiVersion: v1
+# kind: Pod
+# metadata:
+#   name: dctm-log-generator
+#   namespace: default
+# spec:
+#   containers:
+#   - name: log-generator
+#     image: ubuntu:latest
+#     command: ["/bin/bash", "-c"]
+#     args:
+#       - |
+#         cp /scripts/generate-logs.sh /tmp/generate-logs.sh
+#         chmod +x /tmp/generate-logs.sh
+#         exec /tmp/generate-logs.sh
+#     volumeMounts:
+#     - name: log-script
+#       mountPath: /scripts
+#     - name: efs-dba-logs
+#       mountPath: /opt/dctm/dba/log
+#     - name: efs-tomcat-logs
+#       mountPath: /opt/dctm/tomcat10.1.30/logs
+#   volumes:
+#   - name: log-script
+#     configMap:
+#       name: log-generator-script
+#   - name: efs-dba-logs
+#     persistentVolumeClaim:
+#       claimName: dctm-logs-pvc
+#       subPath: dba-logs
+#   - name: efs-tomcat-logs
+#     persistentVolumeClaim:
+#       claimName: dctm-logs-pvc
+#       subPath: tomcat-logs

@@ -15,7 +15,8 @@ podAnnotations:
 
 presets:
   logsCollection:
-    enabled: true
+    enabled: false
+    includeCollectorLogs: false
   hostMetrics:
     enabled: false
   kubernetesAttributes:
@@ -36,14 +37,20 @@ extraVolumeMounts:
   - name: varlog
     mountPath: /host/var/log
     readOnly: true
-  - name: internal-ca-volume
-    mountPath: /etc/otel/certs/
-    readOnly: true
+  # - name: optlog
+  #   mountPath: /host/opt/dctm
+  #   readOnly: true     
+  # - name: merck-trusted-ca
+  #   mountPath: /etc/ssl/certs
+  #   readOnly: true
 
 extraVolumes:
   - name: varlog
     hostPath:
       path: /var/log
+  # - hostPath:
+  #     path: /opt/dctm
+  #   name: optlog    
   - name: internal-ca-volume
     secret:
       secretName: otel-internal-ca-secret
@@ -51,12 +58,13 @@ extraVolumes:
 
 config:
   receivers:
-    # k8s_events receiver collects Kubernetes events
+    jaeger: null
+    zipkin: null
     k8s_events:
-    filelog:
+    filelog/k8s_pods:
       include:
-        - /var/log/pods/*/*/*.log
-        - /host/var/log/syslog
+        # - /var/log/pods/*/*/*.log
+        # - /host/var/log/syslog
         - /host/var/log/messages
         - /host/var/log/*.log
       # Exclude logs from specific pods (refine these patterns if needed)
@@ -67,17 +75,33 @@ config:
       include_file_path: true
       include_file_name: true
       operators:
-        # Route based on log format
+        # Find out which format is used by kubernetes
         - type: router
           id: get-format
           routes:
-            - output: parser-docker
+            - output: docker-runtime
               expr: 'body matches "^\\{"'
-            - output: parser-crio
+            - output: crio-runtime
               expr: 'body matches "^[^ Z]+ "'
-            - output: parser-containerd
+            - output: containerd-runtime
               expr: 'body matches "^[^ Z]+Z"'
-        # CRI-O log parser
+        - type: add
+          id: docker-runtime
+          field: attributes["container.runtime"]
+          value: "docker"
+          output: parser-docker
+        - type: add
+          id: crio-runtime
+          field: attributes["container.runtime"]
+          value: "crio"
+          output: parser-crio
+        - type: add
+          id: containerd-runtime
+          field: attributes["container.runtime"]
+          value: "containerd"
+          output: parser-containerd    
+
+        # Parse CRI-O format
         - type: regex_parser
           id: parser-crio
           regex: "^(?P<time>[^ Z]+) (?P<stream>stdout|stderr) (?P<logtag>[^ ]*) ?(?P<log>.*)$"
@@ -85,65 +109,167 @@ config:
           timestamp:
             parse_from: attributes.time
             layout_type: gotime
-            layout: "2006-01-02T15:04:05.000000000-07:00"
-        # Containerd log parser
+            layout: "2006-01-02T15:04:05.999999999Z07:00"
+
+        # Parse CRI-Containerd format
         - type: regex_parser
           id: parser-containerd
-          regex: "^(?P<time>[^ ^Z]+Z) (?P<stream>stdout|stderr) (?P<logtag>[^ ]*) ?(?P<log>.*)$"
+          regex: "^(?P<time>[^ Z]+Z) (?P<stream>stdout|stderr) (?P<logtag>[^ ]*) ?(?P<log>.*)$"
           output: extract_metadata_from_filepath
           timestamp:
             parse_from: attributes.time
             layout: "%Y-%m-%dT%H:%M:%S.%LZ"
-        # Docker JSON log parser
+
+        # Parse Docker format
         - type: json_parser
           id: parser-docker
           output: extract_metadata_from_filepath
           timestamp:
             parse_from: attributes.time
             layout: "%Y-%m-%dT%H:%M:%S.%LZ"
-        # Move the log field to body for downstream processing
+
         - type: move
           from: attributes.log
           to: body
-        # Extract metadata from the file path
+
+        # Extract metadata from file path
         - type: regex_parser
           id: extract_metadata_from_filepath
           regex: '^.*\/(?P<namespace>[^_]+)_(?P<pod_name>[^_]+)_(?P<uid>[a-f0-9\-]{36})\/(?P<container_name>[^\._]+)\/(?P<restart_count>\d+)\.log$'
           parse_from: attributes["log.file.path"]
-        # Filter out unwanted logs (e.g. from loki canary pods)
+
         - type: filter
           id: junk_filter
           expr: 'attributes.container_name matches "^loki-(canary).*$"'
-        # Rename attributes for clarity
+
+        # Rename attributes
         - type: move
           from: attributes.container_name
           to: resource["container"]
+        - type: move
+          from: attributes.stream
+          to: resource["stream"]  
         - type: move
           from: attributes.namespace
           to: resource["namespace"]
         - type: move
           from: attributes.pod_name
-          to: resource.attributes["pod"]
+          to: resource["pod"]
         - type: move
           from: attributes.restart_count
           to: attributes["pod_restart_count"]
         - type: move
           from: attributes.uid
           to: attributes["pod_uid"]
-        # Optionally extract log level from JSON logs
+
         - type: json_parser
           id: extract-level-from-json-log
           parse_from: attributes["log"]
           output: parser-level
           if: 'attributes["log"] matches "^{.*}$"'
+
         - type: regex_parser
           id: parser-level
-          regex: "^.*level=(?P<level>.*) msg=.*$"
+          regex: "^.*level=(?P<level>\\w+).*msg=.*$"
           parse_from: body
           if: 'body matches ".*level=.* msg.*"'
+
         - type: severity_parser
           parse_from: attributes["level"]
           if: 'attributes["level"] != nil'
+
+        - type: move
+          from: attributes["log.file.path"]
+          to: resource["log.file.path"]
+          if: 'attributes["log.file.path"] != nil'
+        - type: move
+          from: attributes["log.file.name"]
+          to: resource["log.file.name"]
+          if: 'attributes["log.file.name"] != nil' 
+        - type: move
+          from: attributes.level
+          to: resource["level"]
+          if: 'attributes["level"] != nil'
+    filelog/custom:
+      include:
+        - /host/opt/dctm/dba/log/MEDSDEV1.log
+        - /host/opt/dctm/tomcat10.1.30/logs/bpm.log
+        - /host/opt/dctm/tomcat10.1.30/logs/otdsauth.log
+        - /host/opt/dctm/webapps/D2/logs/D2-log4j.log
+      exclude:
+        - /var/log/pods/*nginx*/**
+        - /host/var/log/falcon-*/**
+      start_at: end
+      include_file_path: true
+      include_file_name: true
+      operators:
+        - type: router
+          id: log-router
+          routes:
+            - output: medsdev-log
+              expr: 'attributes["log.file.path"] matches ".*MEDSDEV1.log$"'
+            - output: bpm-log
+              expr: 'body matches "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2},\\d{3} \\w+ \\[.*?\\] \\[.*?\\] - .*"'
+            - output: otdsauth-log
+              expr: 'body matches "^\\d{1,2} \\w+ \\d{4} \\d{2}:\\d{2}:\\d{2},\\d{3} \\w+ \\[.*?\\] .*? - .*"'
+            - output: log4j-log
+              expr: 'body matches "^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}\\.\\d{3} \\[\\w+\\] \\[.*?\\] .*?: .*"'  
+            # - output: log4j-log
+            #   expr: 'attributes["log.file.path"] matches ".*D2-log4j.log$"'
+
+        - type: recombine
+          id: multiline-combiner
+          combine_field: body
+          is_first_entry: 'body matches "^\\d{4}-\\d{2}-\\d{2}T?\\d{2}:\\d{2}:\\d{2}"'
+          timeout: 5s
+
+        - type: regex_parser
+          id: medsdev-log
+          regex: '^(?P<timestamp>\S+)\t(?P<thread>\S+)\t(?P<session_id>\S+)\t(?P<message>.+)$'
+          timestamp:
+            parse_from: attributes.timestamp
+            layout: '%Y-%m-%dT%H:%M:%S.%f'
+          parse_to: attributes
+
+        - type: regex_parser
+          id: bpm-log
+          regex: '^(?P<timestamp>\S+ \S+) (?P<severity>\w+) \[(?P<thread>[^\]]+)\] \[(?P<class>[^\]]+)\] - (?P<message>.+)$'
+          timestamp:
+            parse_from: attributes.timestamp
+            layout: '%Y-%m-%dT%H:%M:%S,%L'
+          parse_to: attributes
+
+        - type: regex_parser
+          id: otdsauth-log
+          regex: '^(?P<timestamp>\d{1,2} \w+ \d{4} \d{2}:\d{2}:\d{2},\d{3}) (?P<severity>\w+) \[(?P<thread>[^\]]+)\] (?P<class>[^ ]+) - (?P<message>.+)$'
+          timestamp:
+            parse_from: attributes.timestamp
+            layout: '%d %b %Y %H:%M:%S,%L'
+          parse_to: attributes
+
+        - type: regex_parser
+          id: log4j-log
+          regex: '^(?P<timestamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3}) \[(?P<severity>\w+) ?\] \[(?P<thread>[^\]]+)\] (?P<class>[^:]+): (?P<message>.+)$'
+          timestamp:
+            parse_from: attributes.timestamp
+            layout: '%Y-%m-%d %H:%M:%S.%L'
+          parse_to: attributes 
+
+        - type: severity_parser
+          parse_from: attributes.severity
+
+        - type: move
+          from: attributes.message
+          to: body
+         
+        - type: move
+          from: attributes["log.file.path"]
+          to: resource["log.file.path"]
+          if: 'attributes["log.file.path"] != nil'
+        - type: move
+          from: attributes["log.file.name"]
+          to: resource["log.file.name"]
+          if: 'attributes["log.file.name"] != nil'             
 
   processors:
     k8sattributes:
@@ -180,9 +306,10 @@ config:
           key: otel.collector.id
           value: ${collector_id}-logs
     resourcedetection:
-      detectors: [env, system, ec2]
+      detectors: [env, system, ec2] # include ec2 for AWS, gce for GCP and azure for Azure.
       timeout: 2s
-      override: true
+      override: false
+
     filter/noise:
       logs:
         log_record:
@@ -203,37 +330,35 @@ config:
         - action: upsert
           key: X-Scope-OrgId
           from_context: X-Scope-OrgId
-
   exporters:
     otlp:
       endpoint: "https://otel.gowthamvandana.com:443"
-      tls:
-        insecure: false
-        insecure_skip_verify: true
-        #ca_file: /etc/otel/certs/ca.crt
       headers:
-        X-Scope-OrgId: obsrv
+        X-Scope-OrgId: logs
       compression: snappy
-
+      tls:  
+        insecure: false
+        insecure_skip_verify: true 
   service:
     telemetry:
       metrics:
-        address: 0.0.0.0:8888
         level: detailed
       logs:
         level: WARN
     extensions: [health_check, headers_setter]
     pipelines:
       logs:
-        receivers: [filelog, k8s_events]
-        processors: [filter/noise, batch]
+        receivers: [filelog/k8s_pods, filelog/custom, k8s_events]
+        processors: [k8sattributes, resource, resourcedetection, filter/noise, batch]
         exporters: [otlp]
+      metrics: null
+      traces: null
 
 ports:
   otlp:
-    enabled: false
+    enabled: true
   otlp-http:
-    enabled: false
+    enabled: true
   jaeger-compact:
     enabled: false
   jaeger-thrift:
@@ -248,7 +373,7 @@ ports:
     servicePort: 8888
     protocol: TCP
 
-# Resource limits & requests. Uncomment and adjust if needed.
+# Resource limits & requests. Update according to your own use case as these values might be too low for a typical deployment.
 resources: {}
 # resources:
 #   requests:
