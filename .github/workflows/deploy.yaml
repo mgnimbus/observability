@@ -48,7 +48,7 @@ jobs:
         working-directory: ${{ matrix.directory }}
         run: |
           echo "🚀 Deploying ${{ matrix.component }}"
-          
+
           terraform init
           terraform plan -out=tfplan
           terraform apply -auto-approve tfplan
@@ -98,7 +98,7 @@ jobs:
         working-directory: ${{ matrix.directory }}
         run: |
           echo "🚀 Deploying ${{ matrix.component }}"
-          
+
           terraform init
           terraform plan -out=tfplan
           terraform apply -auto-approve tfplan
@@ -111,7 +111,15 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        component: [nginx-ingress, grafana, loki, otel-operator, otel-collector, meta-monitoring]
+        component:
+          [
+            nginx-ingress,
+            grafana,
+            loki,
+            otel-operator,
+            otel-collector,
+            meta-monitoring,
+          ]
         include:
           - component: nginx-ingress
             directory: ./_1.2.2_nginx_ingress
@@ -130,6 +138,9 @@ jobs:
             order: 2
           - component: meta-monitoring
             directory: ./_meta_monitoring
+            order: 2
+          - component: meta-monitoring
+            directory: ./_10_grafana_services
             order: 2
       max-parallel: 4
     steps:
@@ -167,7 +178,7 @@ jobs:
         working-directory: ${{ matrix.directory }}
         run: |
           echo "🚀 Deploying ${{ matrix.component }}"
-          
+
           terraform init
           terraform plan -out=tfplan
           terraform apply -auto-approve tfplan

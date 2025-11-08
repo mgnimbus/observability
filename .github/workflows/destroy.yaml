@@ -34,7 +34,8 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        component: 
+        component:
+          - grafana_service
           - meta-monitoring
           - otel-collector
           - otel-operator
@@ -42,6 +43,8 @@ jobs:
           - grafana
           - nginx-ingress
         include:
+          - component: grafana_service
+            directory: ./_10_grafana_services
           - component: meta-monitoring
             directory: ./_meta_monitoring
           - component: otel-collector
@@ -54,7 +57,7 @@ jobs:
             directory: ./_2_grafana
           - component: nginx-ingress
             directory: ./_1.2.2_nginx_ingress
-      max-parallel: 1  # Sequential to respect dependencies
+      max-parallel: 1 # Sequential to respect dependencies
     steps:
       - name: Checkout
         uses: actions/checkout@v4
