@@ -28,9 +28,9 @@ module "eks" {
       service_account_role_arn = module.irsa_ebs_csi.iam_role_arn
     }
 
-    aws-efs-csi-driver = {
-      service_account_role_arn = module.irsa_efs_csi.iam_role_arn
-    }
+    # aws-efs-csi-driver = {
+    #   service_account_role_arn = module.irsa_efs_csi.iam_role_arn
+    # }
   }
   # Add this block to grant 'nimbus' user access
   # access_entries = {
