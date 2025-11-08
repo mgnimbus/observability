@@ -2,6 +2,7 @@ resource "helm_release" "mimir" {
   name             = "mimir"
   repository       = "https://grafana.github.io/helm-charts"
   chart            = "mimir-distributed"
+  version          = "5.6.0"
   namespace        = var.namespace
   create_namespace = true
   timeout          = 300

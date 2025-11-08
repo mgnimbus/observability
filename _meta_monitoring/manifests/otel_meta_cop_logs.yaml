@@ -15,18 +15,18 @@ podAnnotations:
 
 presets:
   logsCollection:
-    enabled: false
+    enabled: true
     includeCollectorLogs: false
   hostMetrics:
     enabled: false
   kubernetesAttributes:
-    enabled: false
-    extractAllPodLabels: false
-    extractAllPodAnnotations: false
+    enabled: true
+    extractAllPodLabels: true
+    extractAllPodAnnotations: true
   kubeletMetrics:
     enabled: false
   kubernetesEvents:
-    enabled: false
+    enabled: true
   clusterMetrics:
     enabled: false
 
@@ -37,55 +37,30 @@ extraVolumeMounts:
   - name: varlog
     mountPath: /host/var/log
     readOnly: true
-  - name: dctm-logs
-    mountPath: /mnt/dctm-logs
-    readOnly: true
 
 extraVolumes:
   - name: varlog
     hostPath:
       path: /var/log
-  - name: dctm-logs
-    persistentVolumeClaim:
-      claimName: dctm-logs-pvc    
   - name: internal-ca-volume
     secret:
       secretName: otel-internal-ca-secret
       defaultMode: 444
-
-extraContainers: 
-  - name: debug-container
-    image: busybox:latest  # You can use any image you need for debugging
-    command:
-      - "sh"
-      - "-c"
-      - "tail -f /dev/null"  # Keep the container running for debugging
-    volumeMounts:
-      - name: dctm-logs
-        mountPath: /mnt/dctm-logs  # Mount the same volume as the OpenTelemetry Collector
-    resources:
-      limits:
-        memory: 200Mi
-        cpu: 500m
-      requests:
-        memory: 100Mi
-        cpu: 250m
-
 
 config:
   receivers:
     jaeger: null
     zipkin: null
     k8s_events:
-    filelog/k8s_pods:
+    filelog:
       include:
-        # - /var/log/pods/*/*/*.log
+        - /var/log/pods/*/*/*.log
         # - /host/var/log/syslog
-        - /host/var/log/messages
-        - /host/var/log/*.log
+        # - /host/var/log/messages
+        # - /host/var/log/*.log
       # Exclude logs from specific pods (refine these patterns if needed)
       exclude:
-        - /var/log/pods/*nginx*/**
+        #- /var/log/pods/*nginx*/**
         - /host/var/log/falcon-*/**
       start_at: end
       include_file_path: true
@@ -115,7 +90,7 @@ config:
           id: containerd-runtime
           field: attributes["container.runtime"]
           value: "containerd"
-          output: parser-containerd    
+          output: parser-containerd
 
         # Parse CRI-O format
         - type: regex_parser
@@ -164,13 +139,13 @@ config:
           to: resource["container"]
         - type: move
           from: attributes.stream
-          to: resource["stream"]  
+          to: resource.attributes["stream"]
         - type: move
           from: attributes.namespace
           to: resource["namespace"]
         - type: move
           from: attributes.pod_name
-          to: resource["pod"]
+          to: resource.attributes["pod"]
         - type: move
           from: attributes.restart_count
           to: attributes["pod_restart_count"]
@@ -186,7 +161,7 @@ config:
 
         - type: regex_parser
           id: parser-level
-          regex: "^.*level=(?P<level>\\w+).*msg=.*$"
+          regex: "^.*level=(?P<level>.*) msg=.*$"
           parse_from: body
           if: 'body matches ".*level=.* msg.*"'
 
@@ -201,52 +176,11 @@ config:
         - type: move
           from: attributes["log.file.name"]
           to: resource["log.file.name"]
-          if: 'attributes["log.file.name"] != nil' 
+          if: 'attributes["log.file.name"] != nil'
         - type: move
           from: attributes.level
           to: resource["level"]
           if: 'attributes["level"] != nil'
-    filelog/custom:
-      include:
-        - /mnt/dctm-logs/MEDSDEV1.log
-      exclude:
-        - /var/log/pods/*/otel-collector/*.log
-      start_at: end
-      include_file_path: true
-      include_file_name: true
-      operators:
-        - type: router
-          id: log-router
-          routes:
-            - output: medsdev-log
-              expr: 'attributes["log.file.path"] matches ".*MEDSDEV1.log$"'
-        - type: regex_parser 
-          id: medsdev-log
-          regex: '^(?P<timestamp>\S+T\S+)\s*(?P<process_id>\d+)\[(?P<thread_id>\d+)\]\s*(?P<session_id>\S+)\s*(?P<level>\S+)(?:\s*[:\s]*(?P<message>.*))?$'
-          timestamp:
-            parse_from: attributes.timestamp
-            layout: '%Y-%m-%dT%H:%M:%S.%f'
-          parse_to: attributes
-        - type: severity_parser
-          parse_from: attributes.level
-        - type: move
-          from: attributes.message
-          to: body
-        - type: move
-          from: attributes.namespace
-          to: resource["namespace"]
-        - type: move
-          from: attributes.pod_name
-          to: resource["pod"]  
-        - type: move
-          from: attributes["log.file.path"]
-          to: resource["log.file.path"]
-          if: 'attributes["log.file.path"] != nil'
-        - type: move
-          from: attributes["log.file.name"]
-          to: resource["log.file.name"]
-          if: 'attributes["log.file.name"] != nil'
-
 
   processors:
     k8sattributes:
@@ -312,12 +246,15 @@ config:
       verbosity: detailed
     otlp:
       endpoint: "https://otel.gowthamvandana.com:443"
-      headers:
-        X-Scope-OrgId: logs
-      compression: snappy
-      tls:  
+      tls:
         insecure: false
-        insecure_skip_verify: true 
+        insecure_skip_verify: true
+      headers:
+        X-Scope-OrgId: obsrv
+      compression: snappy
+      tls:
+        insecure: false
+        insecure_skip_verify: true
   service:
     telemetry:
       metrics:
@@ -327,9 +264,9 @@ config:
     extensions: [health_check, headers_setter]
     pipelines:
       logs:
-        receivers: [filelog/custom]
+        receivers: [filelog, k8s_events]
         processors: [resource, filter/noise, batch]
-        exporters: [debug, otlp]
+        exporters: [otlp]
       metrics: null
       traces: null
 

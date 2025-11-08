@@ -5,10 +5,10 @@ metadata:
   namespace: ${namespace}
 spec:
   mode: statefulset
-  image: otel/opentelemetry-collector-contrib
+  image: otel/opentelemetry-collector-contrib:0.130.0
   targetAllocator:
     enabled: true
-    image: ghcr.io/open-telemetry/opentelemetry-operator/target-allocator
+    image: ghcr.io/open-telemetry/opentelemetry-operator/target-allocator:0.123.0
     replicas: 1
     prometheusCR:
       enabled: true
@@ -196,7 +196,6 @@ spec:
       extensions: [headers_setter]
       telemetry:
         metrics:
-          address: 0.0.0.0:8888
           level: detailed
         logs:
           level: warn

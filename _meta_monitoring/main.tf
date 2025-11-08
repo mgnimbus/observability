@@ -17,10 +17,10 @@ resource "helm_release" "metrics_server" {
 resource "helm_release" "kube_state_metrics" {
   name = "kube-state-metrics"
 
-  repository       = "https://charts.bitnami.com/bitnami"
+  repository       = "https://prometheus-community.github.io/helm-charts"
   chart            = "kube-state-metrics"
   namespace        = kubernetes_namespace.meta_monitoring.metadata[0].name
-  version          = "3.5.7"
+  version          = "6.2.0"
   create_namespace = false
   depends_on       = [helm_release.metrics_server]
 }
@@ -57,7 +57,7 @@ resource "helm_release" "otel_meta_cop_logs" {
   ]
   depends_on = [kubernetes_secret_v1.otel_internal_ca]
 }
-/*
+
 resource "kubectl_manifest" "ta" {
   yaml_body = templatefile("${path.module}/manifests/meta_ta.yaml", {
     collector_id    = "obsrv-ta"
@@ -70,20 +70,20 @@ resource "kubectl_manifest" "ta" {
   })
   depends_on = [kubernetes_secret_v1.otel_internal_ca]
 }
-*/
 
-# resource "kubectl_manifest" "metrics" {
-#   yaml_body = templatefile("${path.module}/manifests/new.yaml", {
-#     collector_id    = "obsrv-metrics-new"
-#     eks_cluster     = data.terraform_remote_state.eks.outputs.cluster_name
-#     namespace       = kubernetes_namespace.meta_monitoring.metadata[0].name
-#     service_account = var.service_account_name
-#     # obsrv_domain_name = var.obsrv_domain_name
-#     # skip_tls_verify   = var.skip_tls_verify
 
-#   })
-#   depends_on = [kubernetes_secret_v1.otel_internal_ca]
-# }
+resource "kubectl_manifest" "metrics" {
+  yaml_body = templatefile("${path.module}/manifests/meta_metrics.yaml", {
+    collector_id    = "obsrv-metrics-new"
+    eks_cluster     = data.terraform_remote_state.eks.outputs.cluster_name
+    namespace       = kubernetes_namespace.meta_monitoring.metadata[0].name
+    service_account = var.service_account_name
+    # obsrv_domain_name = var.obsrv_domain_name
+    # skip_tls_verify   = var.skip_tls_verify
+
+  })
+  depends_on = [kubernetes_secret_v1.otel_internal_ca]
+}
 
 
 resource "kubectl_manifest" "serviceaccount" {

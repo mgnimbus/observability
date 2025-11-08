@@ -217,19 +217,18 @@ gossipPortName: gossip
 ##
 service:
   enabled: true
-  type: ClusterIP
+  type: NodePort
   # Set the ip family policy to configure dual-stack see [Configure dual-stack](https://kubernetes.io/docs/concepts/services-networking/dual-stack/#services)
   ipFamilyPolicy: ""
   # Sets the families that should be supported and the order in which they should be applied to ClusterIP as well. Can be IPv4 and/or IPv6.
   ipFamilies: []
   loadBalancerIP: ""
+  # Use a specific load balancer class if needed
   loadBalancerClass: ""
+  # restrict source ranges if needed
   loadBalancerSourceRanges: []
   port: 80
-  targetPort:
-    3000
-    # targetPort: 4181 To be used with a proxy extraContainer
-  ## Service annotations. Can be templated.
+  targetPort: 3000
   annotations: {}
   labels: {}
   portName: service
@@ -266,8 +265,9 @@ hostAliases:
   #     - "my.host.com"
 
 ingress:
-  enabled: false
+  enabled: true
   annotations:
+    kubernetes.io/ingress.class: nlb
     alb.ingress.kubernetes.io/load-balancer-name: grafana-ingres
     alb.ingress.kubernetes.io/scheme: internet-facing
     alb.ingress.kubernetes.io/healthcheck-protocol: HTTP
@@ -280,7 +280,7 @@ ingress:
     alb.ingress.kubernetes.io/unhealthy-threshold-count: "2"
     #ssl
     alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80}, {"HTTPS": 443}]'
-    alb.ingress.kubernetes.io/certificate-arn: arn:aws:acm:ap-south-2:058264194719:certificate/923313dc-6785-401f-b73c-1fd7e134a497
+    alb.ingress.kubernetes.io/certificate-arn: arn:aws:acm:ap-south-2:058264194719:certificate/988eb396-70f7-456f-aba6-91ed9732376c
     alb.ingress.kubernetes.io/ssl-policy: ELBSecurityPolicy-TLS-1-1-2017-01
     alb.ingress.kubernetes.io/ssl-redirect: "443"
 
