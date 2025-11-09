@@ -13,8 +13,9 @@ data "aws_eks_cluster_auth" "cluster" {
   name = data.terraform_remote_state.eks.outputs.cluster_name
 }
 
-data "aws_lbs" "obsrv" {
+data "aws_lbs" "otel" {
   tags = {
-    "elbv2.k8s.aws/cluster" = data.terraform_remote_state.eks.outputs.cluster_name
+    "elbv2.k8s.aws/cluster" = data.terraform_remote_state.eks.outputs.cluster_name,
+    "service.k8s.aws/stack" = "nginx-ingress/nginx-ingress-ingress-nginx-controller"
   }
 }

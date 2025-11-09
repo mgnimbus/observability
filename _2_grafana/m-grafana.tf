@@ -16,13 +16,13 @@ resource "helm_release" "grafana" {
 
 
 resource "time_sleep" "wait_30_seconds" {
-  depends_on = [module.route53_zone]
+  depends_on = [helm_release.helm_release]
 
   create_duration = "60s"
 }
 
 data "aws_lbs" "grafana" {
-  depends_on = [helm_release.grafana, time_sleep.wait_30_seconds]
+  depends_on = [helm_release.helm_release, time_sleep.wait_30_seconds]
   tags = {
     "elbv2.k8s.aws/cluster" = data.terraform_remote_state.eks.outputs.cluster_name,
     "ingress.k8s.aws/stack" = "grafana/grafana"

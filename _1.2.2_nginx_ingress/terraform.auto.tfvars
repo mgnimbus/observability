@@ -9,4 +9,4 @@ namespace = "nginx-ingress"
 dns_namespace            = "external-dns"
 dns_service_account_name = "external-dns"
 
-privata_zone_name = "otel.gowthamvandana.com"
+private_zone_name = "otel.gowthamvandana.com"

@@ -40,7 +40,7 @@ variable "dns_namespace" {
   type        = string
 }
 
-variable "privata_zone_name" {
+variable "private_zone_name" {
   description = "Name of the private zone"
-  default     = "observability"
+  type        = string
 }

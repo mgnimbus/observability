@@ -139,9 +139,9 @@ jobs:
           - component: meta-monitoring
             directory: ./_meta_monitoring
             order: 2
-          - component: meta-monitoring
+          - component: grafana-services
             directory: ./_10_grafana_services
-            order: 2
+            order: 3
       max-parallel: 4
     steps:
       - name: Wait for dependencies
