@@ -16,7 +16,7 @@ resource "helm_release" "grafana" {
 
 
 resource "time_sleep" "wait_30_seconds" {
-  depends_on = [helm_release.helm_release]
+  depends_on = [helm_release.grafana]
 
   create_duration = "60s"
 }
