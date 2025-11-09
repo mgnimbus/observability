@@ -14,3 +14,38 @@ resource "helm_release" "grafana" {
   )]
 }
 
+
+resource "time_sleep" "wait_30_seconds" {
+  depends_on = [module.route53_zone]
+
+  create_duration = "60s"
+}
+
+data "aws_lbs" "grafana" {
+  depends_on = [helm_release.grafana, time_sleep.wait_30_seconds]
+  tags = {
+    "elbv2.k8s.aws/cluster" = data.terraform_remote_state.eks.outputs.cluster_name,
+    "ingress.k8s.aws/stack" = "grafana/grafana"
+  }
+}
+
+locals {
+  lb_arns = tolist(data.aws_lbs.grafana.arns)
+}
+
+
+data "aws_lb" "selected" {
+  for_each = { for idx, arn in local.lb_arns : "lb-${idx}" => arn }
+  arn      = each.value
+}
+
+resource "aws_route53_record" "otel" {
+  name    = "grafana"
+  type    = "A"
+  zone_id = "Z0337659CJX6TAYBFWV4"
+  alias {
+    name                   = data.aws_lb.selected["lb-0"].dns_name
+    zone_id                = data.aws_lb.selected["lb-0"].zone_id
+    evaluate_target_health = true
+  }
+}
