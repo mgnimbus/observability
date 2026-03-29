@@ -6,7 +6,7 @@ business_divsion = "meda"
 
 # EKS cluster
 cluster_name    = "eksdemotest"
-cluster_version = "1.30"
+cluster_version = "1.31"
 
 
 # VPC Variables
