@@ -1,7 +1,6 @@
 data "aws_route53_zone" "otel" {
   name         = var.private_zone_name
   private_zone = true
-  depends_on   = [helm_release.nginx_ingress]
 }
 
 locals {
@@ -9,9 +8,8 @@ locals {
 }
 
 data "aws_lb" "selected" {
-  for_each   = { for idx, arn in local.lb_arns : "lb-${idx}" => arn }
-  arn        = each.value
-  depends_on = [helm_release.nginx_ingress]
+  for_each = { for idx, arn in local.lb_arns : "lb-${idx}" => arn }
+  arn      = each.value
 }
 
 
@@ -24,5 +22,4 @@ resource "aws_route53_record" "otel" {
     zone_id                = data.aws_lb.selected[keys(data.aws_lb.selected)[0]].zone_id
     evaluate_target_health = true
   }
-  depends_on = [helm_release.nginx_ingress]
 }

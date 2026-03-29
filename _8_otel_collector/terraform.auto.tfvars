@@ -4,3 +4,4 @@ region           = "ap-south-2"
 environment      = "dev"
 business_divsion = "meda"
 
+private_zone_name = "otel.gowthamvandana.com"

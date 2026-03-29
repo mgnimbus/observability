@@ -23,3 +23,7 @@ variable "business_divsion" {
   default     = "SAP"
 }
 
+variable "private_zone_name" {
+  description = "Name of the private zone"
+  type        = string
+}
