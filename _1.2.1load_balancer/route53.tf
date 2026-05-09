@@ -3,7 +3,7 @@ module "private_zones" {
   version = "~> 3.0"
 
   zones = {
-    "otel.gowthamvandana_new.com" = {
+    "otel.gowthamvandana.com" = {
       comment = "Private zone for EKS Cluster resources"
       vpc = [
         {
