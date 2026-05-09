@@ -29,13 +29,13 @@ variable "namespace" {
   default     = "default"
 }
 
-# variable "dns_service_account_name" {
-#   description = "Namespace EKS service account"
-#   type        = string
-# }
+variable "dns_service_account_name" {
+  description = "Namespace EKS service account"
+  type        = string
+}
 
-# # Load balancer Controller
-# variable "dns_namespace" {
-#   description = "Namespace in which the resources are deployed"
-#   type        = string
-# }
+# Load balancer Controller
+variable "dns_namespace" {
+  description = "Namespace in which the resources are deployed"
+  type        = string
+}

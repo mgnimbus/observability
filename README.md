@@ -120,3 +120,10 @@ how to fix it, please visit the web page mentioned above.
 1 eks
 2.1 lbc 2.1.1 nginx
 2.2 cert 2.2. otel
+
+
+loki http://loki-gateway.loki
+mimir http://mimir-nginx.mimir/prometheus
+tempo tempo-distrubuted-query-frontend.tempo:3200
+
+with X-Scope-OrgId as obsrv
