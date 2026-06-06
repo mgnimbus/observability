@@ -1,0 +1,36 @@
+replicas: 1
+
+deploymentStrategy:
+  type: RollingUpdate
+  rollingUpdate:
+    maxSurge: 25%
+    maxUnavailable: 25%
+
+image:
+  registry: docker.io
+  repository: grafana/mcp-grafana
+
+imagePullSecrets: []
+
+grafana:
+  url: "http://grafana.grafana.svc.cluster.local"
+
+debug: false
+
+serviceAccount:
+  create: true
+  name: "grafana-mcp"
+
+service:
+  enabled: true
+  type: ClusterIP
+  port: 8000
+
+ingress:
+  enabled: false
+
+serviceMonitor:
+  enabled: false
+
+hpa:
+  enabled: false

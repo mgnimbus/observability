@@ -20,16 +20,24 @@ Goal is **mastery, not memorization** — whiteboard fluency.
 ## My real environment (use these in every example — no generic placeholders)
 - Cloud: **AWS**, region **ap-south-2**, single primary account.
 - Cluster: EKS **`meda-dev-stud-eksdemotest`** (dev; torn down after experiments).
-- AWS profile: **`nimbus`** (note: repo CLAUDE.md files say `obsrv` — drift, not yet reconciled).
+- AWS profile: **`obsrv`**.
 - Stack: Grafana OSS, **Mimir** (metrics), **Loki** (logs), **Tempo** (traces), OTel
   Collectors, kube-state-metrics, node-exporter, Prometheus Operator (ServiceMonitor/
   PodMonitor), multi-tenant via `X-Scope-OrgID` (tenant `obsrv`).
 - Ingestion entry: nginx-ingress **public NLB** → OTel collector (`otel.gowthamvandana.com`, GRPC).
 - Grafana access (after hardening): **private**, via
   `kubectl -n grafana port-forward svc/grafana 3000:80` → http://localhost:3000.
+- Grafana MCP (in-cluster `grafana-mcp`, SSE :8000) is wired into Claude Code. Reconnect:
+  ```bash
+  kubectl -n grafana port-forward svc/grafana-mcp 8000:8000 &   # keep alive
+  # creds: ~/.config/observability/grafana-mcp.env (chmod 600, sourced by ~/.zshrc)
+  #   exports GRAFANA_MCP_AUTH=base64(admin:<pass>); the `grafana` MCP server header
+  #   in ~/.claude.json references ${GRAFANA_MCP_AUTH} — no plaintext token in config.
+  claude mcp list   # expect: grafana … (SSE) - ✓ Connected
+  ```
 - Kube context changes every session. Standard recipe:
   ```bash
-  aws eks update-kubeconfig --region ap-south-2 --profile nimbus \
+  aws eks update-kubeconfig --region ap-south-2 --profile obsrv \
     --name meda-dev-stud-eksdemotest --alias obsrv-dev
   kubectx obsrv-dev
   ```
