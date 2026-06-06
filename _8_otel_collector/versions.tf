@@ -20,8 +20,8 @@ terraform {
       version = "2.13.2"
     }
     kubectl = {
-      source  = "gavinbunney/kubectl"
-      version = "1.14.0"
+      source  = "alekc/kubectl"
+      version = "2.4.1"
     }
   }
 }
@@ -45,6 +45,17 @@ provider "helm" {
       args        = ["eks", "get-token", "--cluster-name", data.terraform_remote_state.eks.outputs.cluster_name]
       command     = "aws"
     }
+  }
+}
+
+provider "kubectl" {
+  host                   = data.terraform_remote_state.eks.outputs.cluster_endpoint
+  cluster_ca_certificate = base64decode(data.terraform_remote_state.eks.outputs.cluster_certificate_authority_data)
+  load_config_file       = false # alekc/kubectl defaults this to false (gavinbunney was true)
+  exec {
+    api_version = "client.authentication.k8s.io/v1beta1"
+    args        = ["eks", "get-token", "--cluster-name", data.terraform_remote_state.eks.outputs.cluster_name]
+    command     = "aws"
   }
 }
 
