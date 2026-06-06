@@ -30,11 +30,13 @@ Goal is **mastery, not memorization** — whiteboard fluency.
 - Grafana MCP (in-cluster `grafana-mcp`, SSE :8000) is wired into Claude Code. Reconnect:
   ```bash
   kubectl -n grafana port-forward svc/grafana-mcp 8000:8000 &   # keep alive
-  # creds: ~/.config/observability/grafana-mcp.env (chmod 600, sourced by ~/.zshrc)
-  #   exports GRAFANA_MCP_AUTH=base64(admin:<pass>); the `grafana` MCP server header
-  #   in ~/.claude.json references ${GRAFANA_MCP_AUTH} — no plaintext token in config.
+  claude mcp add --scope local --transport sse grafana http://localhost:8000/sse \
+    --header "Authorization: Basic $(printf 'admin:<pass>' | base64)"   # static token
   claude mcp list   # expect: grafana … (SSE) - ✓ Connected
   ```
+  Gotcha: a `${GRAFANA_MCP_AUTH}` env-var header is cleaner (no plaintext in
+  `~/.claude.json`) but only resolves for interactive sessions — background/
+  daemon-spawned Claude sessions don't inherit sourced shell vars → 401. Hence static.
 - Kube context changes every session. Standard recipe:
   ```bash
   aws eks update-kubeconfig --region ap-south-2 --profile obsrv \
