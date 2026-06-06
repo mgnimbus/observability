@@ -14,14 +14,14 @@
 #   yaml_body = file("${path.module}/manifests/prometheus-rules.yaml")
 # }
 
-resource "kubectl_manifest" "pod_monitor" {
-  yaml_body = file("${path.module}/manifests/pod-monitor.yaml")
-}
+# resource "kubectl_manifest" "pod_monitor" {
+#   yaml_body = file("${path.module}/manifests/pod-monitor.yaml")
+# }
 
 
-resource "kubectl_manifest" "service_monitor" {
-  yaml_body = file("${path.module}/manifests/service-monitor.yaml")
-}
+# resource "kubectl_manifest" "service_monitor" {
+#   yaml_body = file("${path.module}/manifests/service-monitor.yaml")
+# }
 
 resource "kubectl_manifest" "scrapeconfigs" {
   yaml_body = file("${path.module}/manifests/scrapeconfigs.yaml")

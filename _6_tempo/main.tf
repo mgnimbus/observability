@@ -12,7 +12,3 @@ resource "helm_release" "tempo" {
       }
   )]
 }
-
-resource "kubectl_manifest" "ca_configmap" {
-  yaml_body = file("${path.module}/manifests/ca.yaml")
-}
