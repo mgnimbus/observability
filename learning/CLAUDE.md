@@ -90,6 +90,9 @@ practices → Quiz.`
 
 ## End-of-day (EOD) protocol — do this without being re-asked
 When I signal the end of a session ("call it a day", "EOD", "let's resume from here"):
+> **EOD docs are verbose** — full, self-contained explanations meant for cold revision
+> months later (definitions, reasoning, trade-offs, worked examples, memorize-list). The
+> terse high-signal house style applies to *live* teaching, **not** to these recaps.
 1. **Write/refresh `learning/eod/YYYY-MM-DD.md`:** TL;DR · what was learned (revisable
    bullets) · corrections/misconceptions caught · the day's diagram(s) as ```mermaid```
    fenced blocks · a **"Resume here"** section naming the exact next topic and any
