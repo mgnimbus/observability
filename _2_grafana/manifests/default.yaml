@@ -214,7 +214,7 @@ gossipPortName: gossip
 ##
 service:
   enabled: true
-  type: NodePort
+  type: ClusterIP # private; reach via `kubectl -n grafana port-forward svc/grafana 3000:80`
   # Set the ip family policy to configure dual-stack see [Configure dual-stack](https://kubernetes.io/docs/concepts/services-networking/dual-stack/#services)
   ipFamilyPolicy: ""
   # Sets the families that should be supported and the order in which they should be applied to ClusterIP as well. Can be IPv4 and/or IPv6.
@@ -260,7 +260,10 @@ hostAliases: []
   #     - "my.host.com"
 
 ingress:
-  enabled: true
+  # DISABLED: this was an internet-facing ALB exposing Grafana publicly at
+  # grafana.varidha.com. Dev access is now private — no LB, no cost:
+  #   kubectl -n grafana port-forward svc/grafana 3000:80   # -> http://localhost:3000
+  enabled: false
   annotations:
     kubernetes.io/ingress.class: nlb
     alb.ingress.kubernetes.io/load-balancer-name: grafana-ingress
@@ -420,9 +423,11 @@ initChownData:
       add:
         - CHOWN
 
-# Administrator credentials when not using an existing secret (see below)
-adminUser: admin
-adminPassword: gowthamm
+# Administrator credentials. Injected by Terraform templatefile (see m-grafana.tf) from
+# the grafana_admin_user / grafana_admin_password variables — NOT committed in plaintext.
+# The old hardcoded password remains in git history: ROTATE it and scrub history.
+adminUser: ${admin_user}
+adminPassword: ${admin_password}
 
 # Use an existing secret for the admin user.
 # admin:
@@ -593,38 +598,54 @@ plugins: []
 ## Configure grafana datasources
 ## ref: http://docs.grafana.org/administration/provisioning/#datasources
 ##
-# datasources:
-#   datasources.yaml:
-#     apiVersion: 1
-#     # -- Datasources linked to the Grafana instance. Override if you disable any components.
-#     datasources:
-#       # https://grafana.com/docs/grafana/latest/datasources/loki/#provision-the-loki-data-source
-#       - name: Loki
-#         uid: loki
-#         type: loki
-#         url: http://{{ .Release.Name }}-loki-gateway
-#         isDefault: false
-#       # https://grafana.com/docs/grafana/latest/datasources/prometheus/#provision-the-data-source
-#       - name: Mimir
-#         uid: prom
-#         type: prometheus
-#         url: http://{{ .Release.Name }}-mimir-nginx/prometheus
-#         isDefault: true
-#       # https://grafana.com/docs/grafana/latest/datasources/tempo/configure-tempo-data-source/#provision-the-data-source
-#       - name: Tempo
-#         uid: tempo
-#         type: tempo
-#         url: http://{{ .Release.Name }}-tempo-query-frontend:3100
-#         isDefault: false
-#         jsonData:
-#           tracesToLogsV2:
-#             datasourceUid: loki
-#           lokiSearch:
-#             datasourceUid: loki
-#           tracesToMetrics:
-#             datasourceUid: prom
-#           serviceMap:
-#             datasourceUid: prom
+## IaC-provisioned datasources. URLs use in-cluster service DNS (<svc>.<ns>.svc.cluster.local).
+## Multi-tenant: every query carries X-Scope-OrgID: obsrv (header value lives in secureJsonData).
+## VERIFY the service names against the live cluster before trusting a red datasource:
+##   kubectl -n mimir get svc | grep -E 'nginx|gateway'
+##   kubectl -n loki  get svc | grep gateway
+##   kubectl -n tempo get svc | grep query-frontend
+datasources:
+  datasources.yaml:
+    apiVersion: 1
+    datasources:
+      - name: Mimir
+        uid: mimir
+        type: prometheus
+        access: proxy
+        orgId: 1 # Main Org
+        url: http://mimir-nginx.mimir/prometheus
+        isDefault: true
+        jsonData:
+          httpHeaderName1: "X-Scope-OrgID"
+        secureJsonData:
+          httpHeaderValue1: "obsrv"
+      - name: Loki
+        uid: loki
+        type: loki
+        access: proxy
+        orgId: 1 # Main Org
+        url: http://loki-gateway.loki
+        jsonData:
+          httpHeaderName1: "X-Scope-OrgID"
+        secureJsonData:
+          httpHeaderValue1: "obsrv"
+      - name: Tempo
+        uid: tempo
+        type: tempo
+        access: proxy
+        orgId: 1 # Main Org
+        url: http://tempo-distributed-query-frontend.tempo:3200
+        jsonData:
+          httpHeaderName1: "X-Scope-OrgID"
+          # Three-pillar correlation: jump trace -> logs (Loki) and trace -> metrics (Mimir).
+          tracesToLogsV2:
+            datasourceUid: loki
+          tracesToMetrics:
+            datasourceUid: mimir
+          serviceMap:
+            datasourceUid: mimir
+        secureJsonData:
+          httpHeaderValue1: "obsrv"
 
 ## Configure grafana alerting (can be templated)
 ## ref: http://docs.grafana.org/administration/provisioning/#alerting
@@ -715,7 +736,18 @@ notifiers: {}
 ##
 ## `path` must be /var/lib/grafana/dashboards/<provider_name>
 ##
-dashboardProviders: {}
+dashboardProviders:
+  dashboardproviders.yaml:
+    apiVersion: 1
+    providers:
+      - name: default
+        orgId: 1
+        folder: ""
+        type: file
+        disableDeletion: false
+        editable: true
+        options:
+          path: /var/lib/grafana/dashboards/default
 #  dashboardproviders.yaml:
 #    apiVersion: 1
 #    providers:
@@ -734,8 +766,39 @@ dashboardProviders: {}
 ##
 ## dashboards per provider, use provider name as key.
 ##
-dashboards: {}
-  # default:
+dashboards:
+  default:
+    # Inline dashboard — always works, needs no internet egress. Proves the IaC path
+    # end-to-end: it queries Mimir (uid: mimir) for the count of healthy scrape targets.
+    platform-smoke-test:
+      json: |
+        {
+          "uid": "platform-smoke-test",
+          "title": "Platform Smoke Test",
+          "schemaVersion": 39,
+          "tags": ["iac", "smoke"],
+          "timezone": "browser",
+          "panels": [
+            {
+              "type": "stat",
+              "title": "Scrape targets up",
+              "datasource": {"type": "prometheus", "uid": "mimir"},
+              "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+              "targets": [{"expr": "count(up == 1)", "refId": "A"}]
+            }
+          ]
+        }
+    # Community dashboards by ID — fetched from grafana.com at pod start (NEEDS egress).
+    # Pin the revision number from each dashboard's grafana.com page, then uncomment:
+    # node-exporter-full:
+    #   gnetId: 1860
+    #   revision: 41
+    #   datasource: Mimir
+    # kube-state-metrics-v2:
+    #   gnetId: 13332
+    #   revision: 12
+    #   datasource: Mimir
+  # default-extra-example:
   #   some-dashboard:
   #     json: |
   #       $RAW_JSON

@@ -13,6 +13,12 @@ env:
   AWS_REGION: ap-south-2
   TF_VERSION: 1.12.2
 
+# Shares one group with deploy.yaml so a destroy can never overlap a deploy on the same
+# S3 state. Never cancel mid-destroy.
+concurrency:
+  group: terraform-${{ github.repository }}
+  cancel-in-progress: false
+
 jobs:
   # Validate confirmation
   validate:
@@ -33,9 +39,9 @@ jobs:
     needs: validate
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false # don't cancel siblings mid-destroy (orphans .tflock objects)
       matrix:
         component:
-          - grafana_service
           - meta-monitoring
           - otel-collector
           - otel-operator
@@ -43,8 +49,6 @@ jobs:
           - grafana
           - nginx-ingress
         include:
-          - component: grafana_service
-            directory: ./_10_grafana_services
           - component: meta-monitoring
             directory: ./_meta_monitoring
           - component: otel-collector
@@ -91,7 +95,7 @@ jobs:
         run: |
           echo "💥 Destroying ${{ matrix.component }}"
           terraform init
-          terraform destroy -auto-approve || echo "⚠️ Component may already be destroyed"
+          terraform destroy -lock-timeout=5m -auto-approve || echo "⚠️ Component may already be destroyed"
 
   # Destroy secondary infrastructure (Cert + LoadBalancer)
   destroy-secondary:
@@ -99,6 +103,7 @@ jobs:
     needs: destroy-monitoring
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false # don't cancel siblings mid-destroy (orphans .tflock objects)
       matrix:
         component:
           - cert
@@ -130,7 +135,7 @@ jobs:
         run: |
           echo "💥 Destroying ${{ matrix.component }}"
           terraform init
-          terraform destroy -auto-approve || echo "⚠️ Component may already be destroyed"
+          terraform destroy -lock-timeout=5m -auto-approve || echo "⚠️ Component may already be destroyed"
 
   # Destroy primary infrastructure (EKS + Backend)
   destroy-core:
@@ -138,6 +143,7 @@ jobs:
     needs: [destroy-monitoring, destroy-secondary]
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false # don't cancel siblings mid-destroy (orphans .tflock objects)
       matrix:
         component:
           - backend
@@ -175,7 +181,7 @@ jobs:
             exit 0
           fi
 
-          terraform destroy -auto-approve || echo "⚠️ Component may already be destroyed"
+          terraform destroy -lock-timeout=5m -auto-approve || echo "⚠️ Component may already be destroyed"
 
   # Summary
   summary:

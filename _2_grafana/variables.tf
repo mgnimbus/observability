@@ -32,3 +32,16 @@ variable "service_account_name" {
   description = "Namespace EKS service account"
   type        = string
 }
+
+variable "grafana_admin_user" {
+  description = "Grafana admin username"
+  type        = string
+  default     = "admin"
+}
+
+variable "grafana_admin_password" {
+  description = "Grafana admin password. Set via TF_VAR_grafana_admin_password (do NOT commit in a .tfvars file)."
+  type        = string
+  sensitive   = true
+  # No default: forces an explicit secret, prevents re-committing a literal.
+}
