@@ -3,6 +3,9 @@
 Format per entry: **what it does** / **what to watch (the gotcha that bites you)**.
 Read top-to-bottom = the telemetry journey in order.
 
+> Session recaps live in `learning/eod/`; diagram sources in `learning/diagrams/` (Mermaid).
+> Refresh this sheet whenever a new component/concept is covered.
+
 ## Origin & collection (metrics)
 - **Telemetry** — The signals a system emits about itself: metrics, logs, traces (+ profiles). / It's data you *design in*, not free; every signal has a cost and a cardinality bill.
 - **Metric** — A numeric measurement sampled over time, identified by a name + label set. / The label set *is* the identity — one new label value = one new time series.

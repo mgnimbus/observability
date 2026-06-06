@@ -88,6 +88,25 @@ practices → Quiz.`
 
 ---
 
+## End-of-day (EOD) protocol — do this without being re-asked
+When I signal the end of a session ("call it a day", "EOD", "let's resume from here"):
+1. **Write/refresh `learning/eod/YYYY-MM-DD.md`:** TL;DR · what was learned (revisable
+   bullets) · corrections/misconceptions caught · the day's diagram(s) as ```mermaid```
+   fenced blocks · a **"Resume here"** section naming the exact next topic and any
+   **pending questions copied verbatim**.
+2. **Update `progress.md`** (statuses, quiz history, misconceptions) and
+   **`component-cheatsheet.md`** if a new component/concept was covered.
+3. **Save reusable diagram sources** under `learning/diagrams/` (`.mmd`).
+4. Commit + push the `learning/` changes so the recap renders on GitHub for revision.
+
+## Diagrams — Mermaid only (no hand-drawn ASCII flow diagrams; they break in my terminal)
+- Preferred: the `mermaid` MCP (`mermaid_preview` → `mermaid_save`) for PNG/SVG.
+- **Known issue:** the MCP render is blocked in this WSL env — headless Chrome is missing
+  system libs (`libnspr4.so` etc. → exits `Code: 127`). Fix once with:
+  `sudo apt-get install -y libnss3 libnspr4 libatk1.0-0 libatk-bridge2.0-0 libcups2 libgbm1 libasound2 libpangocairo-1.0-0 libxcomposite1 libxdamage1 libxrandr2 libxkbcommon0`
+- Until then, embed diagrams as ```mermaid``` **fenced code blocks** — GitHub and the
+  VSCode preview render them natively, no browser needed. This is the default.
+
 ## Learning path (locked order — finish each phase before the next)
 
 ### Phase 1 — Metrics (start at absolute fundamentals)

@@ -1,0 +1,29 @@
+%% Metrics flow — node CPU path (Phase 1, Topics 1-2)
+%% Render: GitHub/VSCode mermaid preview, or mermaid.live
+flowchart TD
+    subgraph S["SYSTEM STATE — free, NOT telemetry"]
+        CPU["Node CPU is busy<br/>(just a fact, ephemeral)"]
+    end
+
+    CPU -->|"BOUNDARY: instrument + sample + emit<br/>-> now it is telemetry (costs money)"| NE
+
+    subgraph ORIGIN["Origin / emitter"]
+        NE["node-exporter<br/>exposes /metrics on :9100<br/>node_cpu_seconds_total = COUNTER"]
+    end
+
+    NE -->|"SCRAPE = PULL<br/>targets from Target Allocator<br/>via ServiceMonitor / PodMonitor"| COL
+
+    subgraph COLLECT["Collection + transform"]
+        COL["OTel Collector (obsrv-metrics-new)<br/>receivers -> processors -> exporters<br/>(NO Prometheus server in this stack)"]
+    end
+
+    COL -->|"remote_write = PUSH<br/>tenant via X-Scope-OrgID HEADER (not a label!)"| MIMIR
+
+    subgraph STORE["Backend — metrics"]
+        MIMIR["Mimir<br/>distributor -> ingester -> S3 blocks"]
+    end
+
+    MIMIR -->|"query path (PromQL)"| GRAF["Grafana<br/>via kubectl port-forward :3000"]
+
+    IDENT["Series identity = name + full label set<br/>change any label value -> new series -> cardinality -> cost"]
+    NE -.-> IDENT
