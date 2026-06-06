@@ -16,13 +16,9 @@ storage:
   trace:
     backend: s3
     s3:
-      bucket: meda-dev-mule-loki-ruler
+      bucket: meda-dev-mule-tempo-traces # dedicated tempo bucket (see _3_s3_backend)
       endpoint: s3.ap-south-2.amazonaws.com
       region: ap-south-2
-# RETENTION: intentionally NOT set here. The old single-binary config used
-# compactor.compaction.block_retention = 24h; the chart default differs. Set your
-# retention policy explicitly (compactor config / overrides) — left out so retention
-# isn't changed silently. CONFIRM before relying on it.
 
 # OTLP receivers — the OTel collector pushes OTLP gRPC :4317 / HTTP :4318.
 traces:
@@ -45,6 +41,9 @@ queryFrontend:
   replicas: 1
 compactor:
   replicas: 1
+  config:
+    compaction:
+      block_retention: 4h # dev: short retention keeps trace storage/cost low
 
 # Service graphs / span metrics need the metrics-generator + remote_write to Mimir.
 # Disabled for now (no new behavior); to enable, set enabled: true and point remoteWrite

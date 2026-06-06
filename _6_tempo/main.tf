@@ -8,7 +8,7 @@ resource "helm_release" "tempo" {
 
   values = [
     templatefile("${path.module}/manifests/test.yaml", {
-      role_arn = data.terraform_remote_state.s3.outputs.irsa_s3_iam_role_arn
+      role_arn = aws_iam_role.tempo_irsa_s3_role.arn
       }
   )]
 }

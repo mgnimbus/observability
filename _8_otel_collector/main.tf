@@ -13,7 +13,7 @@ resource "helm_release" "otel_collector" {
       mimir_endpoint = "http://mimir-nginx.mimir.svc/api/vi/push"
       loki_endpoint  = "http://loki-gateway.loki.svc:80/otlp"
       #loki_endpoint  = "http://loki-gateway.loki.svc:80/loki/api/v1/push"
-      tempo_endpoint = "http://tempo-distributed-distributor.tempo.svc.4317"
+      tempo_endpoint = "tempo-distributed-distributor.tempo.svc.cluster.local:4317"
     })
   ]
   depends_on = [kubernetes_secret.otel_collector]

@@ -15,7 +15,8 @@ locals {
     "loki-chunks",
     "loki-ruler",
     "mimir-chunks",
-    "mimir-index"
+    "mimir-index",
+    "tempo-traces"
   ]
 }
 

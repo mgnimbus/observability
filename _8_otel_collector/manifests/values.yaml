@@ -81,12 +81,12 @@ config:
     #       - attributes["X-Scope-OrgId"] == nil
 
   exporters:
-    # otlp:
-    #   endpoint: "${tempo_endpoint}"
-    #   tls:
-    #     insecure: true
-    #   auth:
-    #     authenticator: headers_setter
+    otlp:
+      endpoint: "${tempo_endpoint}"
+      tls:
+        insecure: true
+      auth:
+        authenticator: headers_setter
     prometheusremotewrite:
       endpoint: "${mimir_endpoint}"
       tls:
@@ -113,10 +113,10 @@ config:
         receivers: [otlp]
         processors: [resource, attributes, batch]
         exporters: [prometheusremotewrite]
-      # # traces:
-      #   receivers: [otlp]
-      #   processors: [resource, attributes, batch]
-      #   exporters: [otlp]
+      traces:
+        receivers: [otlp]
+        processors: [resource, attributes, batch]
+        exporters: [otlp]
       logs:
         receivers: [otlp]
         processors: [resource, attributes, batch]
