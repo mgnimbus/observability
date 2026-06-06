@@ -10,7 +10,7 @@ resource "helm_release" "otel_collector" {
 
   values = [
     templatefile("${path.module}/manifests/values.yaml", {
-      mimir_endpoint = "http://mimir-nginx.mimir.svc/api/vi/push"
+      mimir_endpoint = "http://mimir-nginx.mimir.svc/api/v1/push"
       loki_endpoint  = "http://loki-gateway.loki.svc:80/otlp"
       #loki_endpoint  = "http://loki-gateway.loki.svc:80/loki/api/v1/push"
       tempo_endpoint = "tempo-distributed-distributor.tempo.svc.cluster.local:4317"
