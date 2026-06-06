@@ -113,7 +113,7 @@ jobs:
           terraform apply -lock-timeout=5m -auto-approve tfplan
 
   # ── Monitoring stack — deployed in STRICT STAGES, each waiting for the previous ──
-  #   0 CRDs → 1 nginx-ingress → 2 backends (loki/mimir) → 3 otel (operator→collector)
+  #   0 CRDs → 1 nginx-ingress → 2 backends (loki/mimir/tempo) → 3 otel (operator→collector)
   #   → 4 grafana → 5 meta-monitoring
   # Real ordering comes from `needs:`. The old single matrix + `order`/sleep actually ran
   # everything at once (sleep was a hack); this guarantees dependencies are up first.
@@ -177,13 +177,9 @@ jobs:
           terraform plan -lock-timeout=5m -out=tfplan
           terraform apply -lock-timeout=5m -auto-approve tfplan
 
-  # Stage 2 — storage backends (loki + mimir, in parallel)
-  # NOTE: tempo (_6_tempo) is left out pending reconciliation — that module is release
-  # "tempo" with single-binary values and a `chart = "grafana"` bug, while the Grafana
-  # datasource + OTel collector expect a distributed "tempo-distributed". Align the module
-  # to one shape, then add `- { component: tempo, directory: ./_6_tempo }` here.
+  # Stage 2 — storage backends (loki + mimir + tempo, in parallel)
   monitoring-backends:
-    name: "Monitoring · 2 · backends (loki/mimir)"
+    name: "Monitoring · 2 · backends (loki/mimir/tempo)"
     needs: monitoring-nginx
     if: github.event.inputs.deploy_monitoring == 'true'
     runs-on: ubuntu-latest
@@ -193,6 +189,7 @@ jobs:
         include:
           - { component: loki, directory: ./_4_loki }
           - { component: mimir, directory: ./_5_mimir }
+          - { component: tempo, directory: ./_6_tempo }
     steps:
       - uses: actions/checkout@v6.0.3
       - name: Configure AWS credentials

@@ -52,6 +52,7 @@ jobs:
           - grafana
           - loki
           - mimir
+          - tempo
           - nginx-ingress
           - crd
         include:
@@ -67,6 +68,8 @@ jobs:
             directory: ./_4_loki
           - component: mimir
             directory: ./_5_mimir
+          - component: tempo
+            directory: ./_6_tempo
           - component: nginx-ingress
             directory: ./_1.2.2_nginx_ingress
           # crd destroyed last — removing the CRD cascades its ScrapeConfig instances
