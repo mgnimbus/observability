@@ -38,17 +38,17 @@ jobs:
       max-parallel: 2
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6.0.3
 
       - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4.0.2
+        uses: aws-actions/configure-aws-credentials@v6.2.0
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
+        uses: hashicorp/setup-terraform@v4.0.1
         with:
           terraform_version: ${{ env.TF_VERSION }}
 
@@ -78,17 +78,17 @@ jobs:
       max-parallel: 2
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6.0.3
 
       - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4.0.2
+        uses: aws-actions/configure-aws-credentials@v6.2.0
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
+        uses: hashicorp/setup-terraform@v4.0.1
         with:
           terraform_version: ${{ env.TF_VERSION }}
 
@@ -113,27 +113,57 @@ jobs:
           terraform apply -lock-timeout=5m -auto-approve tfplan
 
   # ── Monitoring stack — deployed in STRICT STAGES, each waiting for the previous ──
-  #   1 nginx-ingress → 2 backends (loki/mimir/tempo) → 3 otel (operator→collector)
+  #   0 CRDs → 1 nginx-ingress → 2 backends (loki/mimir) → 3 otel (operator→collector)
   #   → 4 grafana → 5 meta-monitoring
   # Real ordering comes from `needs:`. The old single matrix + `order`/sleep actually ran
   # everything at once (sleep was a hack); this guarantees dependencies are up first.
 
-  # Stage 1 — ingress entrypoint
-  monitoring-nginx:
-    name: "Monitoring · 1 · nginx-ingress"
+  # Stage 0 — CRDs (ScrapeConfig CustomResourceDefinition). No prerequisites; must exist
+  # before anything references it. _1.3_crd applies the CRD only.
+  monitoring-crd:
+    name: "Monitoring · 0 · CRDs"
     needs: secondary-infrastructure
     if: github.event.inputs.deploy_monitoring == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6.0.3
       - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4.0.2
+        uses: aws-actions/configure-aws-credentials@v6.2.0
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
       - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
+        uses: hashicorp/setup-terraform@v4.0.1
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+      - name: Update kubeconfig
+        run: |
+          cd _1_eks && terraform init
+          aws eks update-kubeconfig --region ${{ env.AWS_REGION }} --name "$(terraform output -raw cluster_name)"
+      - name: Deploy CRDs
+        working-directory: ./_1.3_crd
+        run: |
+          terraform init
+          terraform plan -lock-timeout=5m -out=tfplan
+          terraform apply -lock-timeout=5m -auto-approve tfplan
+
+  # Stage 1 — ingress entrypoint
+  monitoring-nginx:
+    name: "Monitoring · 1 · nginx-ingress"
+    needs: monitoring-crd
+    if: github.event.inputs.deploy_monitoring == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6.0.3
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v6.2.0
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v4.0.1
         with:
           terraform_version: ${{ env.TF_VERSION }}
       - name: Update kubeconfig
@@ -148,9 +178,10 @@ jobs:
           terraform apply -lock-timeout=5m -auto-approve tfplan
 
   # Stage 2 — storage backends (loki + mimir, in parallel)
-  # NOTE: tempo (_6_tempo) is intentionally left out — its main.tf has `chart = "grafana"`
-  # (deploys Grafana into the tempo namespace, not Tempo). Fix that to `tempo-distributed`,
-  # then add `- { component: tempo, directory: ./_6_tempo }` here.
+  # NOTE: tempo (_6_tempo) is left out pending reconciliation — that module is release
+  # "tempo" with single-binary values and a `chart = "grafana"` bug, while the Grafana
+  # datasource + OTel collector expect a distributed "tempo-distributed". Align the module
+  # to one shape, then add `- { component: tempo, directory: ./_6_tempo }` here.
   monitoring-backends:
     name: "Monitoring · 2 · backends (loki/mimir)"
     needs: monitoring-nginx
@@ -163,15 +194,15 @@ jobs:
           - { component: loki, directory: ./_4_loki }
           - { component: mimir, directory: ./_5_mimir }
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6.0.3
       - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4.0.2
+        uses: aws-actions/configure-aws-credentials@v6.2.0
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
       - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
+        uses: hashicorp/setup-terraform@v4.0.1
         with:
           terraform_version: ${{ env.TF_VERSION }}
       - name: Update kubeconfig
@@ -192,15 +223,15 @@ jobs:
     if: github.event.inputs.deploy_monitoring == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6.0.3
       - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4.0.2
+        uses: aws-actions/configure-aws-credentials@v6.2.0
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
       - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
+        uses: hashicorp/setup-terraform@v4.0.1
         with:
           terraform_version: ${{ env.TF_VERSION }}
       - name: Update kubeconfig
@@ -229,15 +260,15 @@ jobs:
     if: github.event.inputs.deploy_monitoring == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6.0.3
       - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4.0.2
+        uses: aws-actions/configure-aws-credentials@v6.2.0
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
       - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
+        uses: hashicorp/setup-terraform@v4.0.1
         with:
           terraform_version: ${{ env.TF_VERSION }}
       - name: Update kubeconfig
@@ -261,15 +292,15 @@ jobs:
     if: github.event.inputs.deploy_monitoring == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6.0.3
       - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4.0.2
+        uses: aws-actions/configure-aws-credentials@v6.2.0
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
       - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
+        uses: hashicorp/setup-terraform@v4.0.1
         with:
           terraform_version: ${{ env.TF_VERSION }}
       - name: Update kubeconfig
@@ -289,6 +320,7 @@ jobs:
     needs:
       - primary-infrastructure
       - secondary-infrastructure
+      - monitoring-crd
       - monitoring-nginx
       - monitoring-backends
       - monitoring-otel
@@ -304,6 +336,7 @@ jobs:
           echo "**Include Monitoring**: ${{ github.event.inputs.deploy_monitoring }}" >> $GITHUB_STEP_SUMMARY
           echo "**Primary Infrastructure (EKS + Backend)**: ${{ needs.primary-infrastructure.result }}" >> $GITHUB_STEP_SUMMARY
           echo "**Secondary Infrastructure (LB + Cert)**: ${{ needs.secondary-infrastructure.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Monitoring · 0 CRDs**: ${{ needs.monitoring-crd.result }}" >> $GITHUB_STEP_SUMMARY
           echo "**Monitoring · 1 nginx**: ${{ needs.monitoring-nginx.result }}" >> $GITHUB_STEP_SUMMARY
           echo "**Monitoring · 2 backends**: ${{ needs.monitoring-backends.result }}" >> $GITHUB_STEP_SUMMARY
           echo "**Monitoring · 3 otel**: ${{ needs.monitoring-otel.result }}" >> $GITHUB_STEP_SUMMARY

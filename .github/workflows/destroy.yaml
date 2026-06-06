@@ -38,6 +38,10 @@ jobs:
     name: "Destroy Monitoring Stack"
     needs: validate
     runs-on: ubuntu-latest
+    env:
+      # _2_grafana now requires grafana_admin_password (no default) — provide it so the
+      # grafana destroy leg doesn't fail on a missing variable. Harmless to other legs.
+      TF_VAR_grafana_admin_password: ${{ secrets.GRAFANA_ADMIN_PASSWORD }}
     strategy:
       fail-fast: false # don't cancel siblings mid-destroy (orphans .tflock objects)
       matrix:
@@ -45,9 +49,11 @@ jobs:
           - meta-monitoring
           - otel-collector
           - otel-operator
-          - loki
           - grafana
+          - loki
+          - mimir
           - nginx-ingress
+          - crd
         include:
           - component: meta-monitoring
             directory: ./_meta_monitoring
@@ -55,26 +61,31 @@ jobs:
             directory: ./_8_otel_collector
           - component: otel-operator
             directory: ./_7_otel_operator
-          - component: loki
-            directory: ./_4_loki
           - component: grafana
             directory: ./_2_grafana
+          - component: loki
+            directory: ./_4_loki
+          - component: mimir
+            directory: ./_5_mimir
           - component: nginx-ingress
             directory: ./_1.2.2_nginx_ingress
+          # crd destroyed last — removing the CRD cascades its ScrapeConfig instances
+          - component: crd
+            directory: ./_1.3_crd
       max-parallel: 1 # Sequential to respect dependencies
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6.0.3
 
       - name: Configure AWS
-        uses: aws-actions/configure-aws-credentials@v4.0.2
+        uses: aws-actions/configure-aws-credentials@v6.2.0
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
+        uses: hashicorp/setup-terraform@v4.0.1
         with:
           terraform_version: ${{ env.TF_VERSION }}
 
@@ -116,17 +127,17 @@ jobs:
       max-parallel: 2
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6.0.3
 
       - name: Configure AWS
-        uses: aws-actions/configure-aws-credentials@v4.0.2
+        uses: aws-actions/configure-aws-credentials@v6.2.0
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
+        uses: hashicorp/setup-terraform@v4.0.1
         with:
           terraform_version: ${{ env.TF_VERSION }}
 
@@ -156,17 +167,17 @@ jobs:
       max-parallel: 1
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6.0.3
 
       - name: Configure AWS
-        uses: aws-actions/configure-aws-credentials@v4.0.2
+        uses: aws-actions/configure-aws-credentials@v6.2.0
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
+        uses: hashicorp/setup-terraform@v4.0.1
         with:
           terraform_version: ${{ env.TF_VERSION }}
 
