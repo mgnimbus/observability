@@ -1,10 +1,10 @@
 terraform {
   backend "s3" {
-    bucket         = "observability-tfstate-bucky-ind"
-    region         = "ap-south-2"
-    key            = "monitoring/terraform.tfstate"
-    dynamodb_table = "nimbus-state-lock-ind"
-    encrypt        = true
+    bucket       = "observability-tfstate-bucky-ind"
+    region       = "ap-south-2"
+    key          = "monitoring/terraform.tfstate"
+    use_lockfile = true
+    encrypt      = true
   }
   required_providers {
     kubernetes = {
