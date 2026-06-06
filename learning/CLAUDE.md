@@ -104,11 +104,13 @@ When I signal the end of a session ("call it a day", "EOD", "let's resume from h
 
 ## Diagrams — Mermaid only (no hand-drawn ASCII flow diagrams; they break in my terminal)
 - Preferred: the `mermaid` MCP (`mermaid_preview` → `mermaid_save`) for PNG/SVG.
-- **Known issue:** the MCP render is blocked in this WSL env — headless Chrome is missing
-  system libs (`libnspr4.so` etc. → exits `Code: 127`). Fix once with:
-  `sudo apt-get install -y libnss3 libnspr4 libatk1.0-0 libatk-bridge2.0-0 libcups2 libgbm1 libasound2 libpangocairo-1.0-0 libxcomposite1 libxdamage1 libxrandr2 libxkbcommon0`
-- Until then, embed diagrams as ```mermaid``` **fenced code blocks** — GitHub and the
-  VSCode preview render them natively, no browser needed. This is the default.
+- **Fixed (2026-06-06):** headless Chrome was missing 4 libs (`libnss3`, `libnssutil3`,
+  `libnspr4`, `libasound.so.2`). Installed via **brew** (`brew install nss nspr alsa-lib`)
+  — no sudo/apt needed — and wired `LD_LIBRARY_PATH=/home/linuxbrew/.linuxbrew/lib` into the
+  mermaid MCP server's `env` (user scope). Render verified. Takes effect after an MCP/session
+  restart (the env is read when the server process spawns).
+- Fenced ```mermaid``` **code blocks** remain a fine fallback (GitHub + VSCode render them
+  natively, no browser) — use them for diagrams embedded in EOD/markdown regardless.
 
 ## Learning path (locked order — finish each phase before the next)
 
