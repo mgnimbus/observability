@@ -1,12 +1,12 @@
 
 resource "helm_release" "loki" {
   name             = "loki"
-  repository       = "https://grafana.github.io/helm-charts"
+  repository       = "https://grafana-community.github.io/helm-charts"
   chart            = "loki"
   namespace        = var.namespace
   create_namespace = true
   timeout          = 120
-  version          = "6.27.0"
+  version          = "17.1.7"
   # atomic           = true
   wait = false
 

@@ -177,6 +177,8 @@ ingester:
     enabled: true
     claims:
       - name: data
+        accessModes:
+          - ReadWriteOnce
         size: 10Gi
         storageClass: obsrv-sc
         enableStatefulSetAutoDeletePVC: true
@@ -229,10 +231,11 @@ distributor:
 compactor:
   replicas: 1
   persistence:
-    enabled: true
+    enabled: false
     claims:
       - name: data
-        size: 10Gi
+        accessModes:
+          - ReadWriteOnce
         storageClass: obsrv-sc
         enableStatefulSetAutoDeletePVC: true
   resources:

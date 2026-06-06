@@ -74,6 +74,7 @@ mimir:
         grpc_compression: snappy
 
 alertmanager:
+  enabled: false
   zoneAwareReplication:
     enabled: false
   resources:
