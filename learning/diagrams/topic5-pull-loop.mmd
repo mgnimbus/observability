@@ -1,0 +1,9 @@
+%% Topic 5 — the pull / scrape loop (Retrieval layer, internal)
+flowchart LR
+  SD["Service Discovery (Target Allocator)"] -->|"target list + labels"| SCHED["Scheduler — per scrape_interval, jittered"]
+  SCHED -->|"HTTP GET /metrics"| T["Target /metrics"]
+  T -->|"text exposition"| PARSE["Parse + timestamp (scraper clock)"]
+  PARSE --> RELABEL["relabel + attach job/instance"]
+  RELABEL --> SAMPLES["samples to pipeline"]
+  SCHED -.->|"synthesize per scrape"| META["up, scrape_duration_seconds, scrape_samples_scraped, scrape_series_added"]
+  META --> SAMPLES

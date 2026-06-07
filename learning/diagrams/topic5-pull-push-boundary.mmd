@@ -1,0 +1,15 @@
+%% Topic 5 — where pull stops and push begins (the OTel collector is the pivot)
+flowchart LR
+  NE["node-exporter :9100"]
+  KSM["kube-state-metrics :8080"]
+  TA["Target Allocator (discovery + assign ONLY — never scrapes)"]
+  subgraph COLL["OTel Collector (obsrv-ta)"]
+    RX["prometheus receiver — does the HTTP GET (PULL)"]
+    PROC["processors (attributes, batch, ...)"]
+    EXP["otlp exporter — does the PUSH"]
+    RX --> PROC --> EXP
+  end
+  TA -. "assigns target list" .-> RX
+  NE -->|"PULL: GET /metrics (HTTP)"| RX
+  KSM -->|"PULL: GET /metrics (HTTP)"| RX
+  EXP -->|"PUSH: OTLP/gRPC over NLB -> otel.gowthamvandana.com"| MIMIR["Mimir distributor -> ingester -> S3"]

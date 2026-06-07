@@ -1,0 +1,20 @@
+%% Topic 3 — why a histogram aggregates across pods and a summary cannot.
+%% Live numbers from meda-dev-koi cortex_request_duration_seconds{route="api_v1_push"}.
+flowchart TD
+    subgraph HIST["HISTOGRAM — counts, math deferred to query time  ✅ aggregatable"]
+        direction TB
+        HA["pod A buckets (cumulative counts)<br/>le0.05=10353  le0.1=11581  +Inf=11882"]
+        HB["pod B buckets<br/>le0.05=...  le0.1=...  +Inf=..."]
+        HA --> HSUM["PromQL: sum by (le) ( rate(..._bucket[5m]) )<br/>counts are additive -> legal merge"]
+        HB --> HSUM
+        HSUM --> HQ["histogram_quantile(0.99, ...)<br/>= true fleet-wide p99 (live: 0.066s)"]
+    end
+    subgraph SUMM["SUMMARY — quantile baked in at the source  ❌ NOT aggregatable"]
+        direction TB
+        SA["pod A: my p99 = 0.8s (a gauge)"]
+        SB["pod B: my p99 = 1.2s"]
+        SA --> SX["avg(0.8, 1.2) = 1.0s<br/>STATISTICALLY MEANINGLESS<br/>(quantiles do not sum/average)"]
+        SB --> SX
+    end
+    NOTE["Disk for ONE histogram = 3 suffixes, all counters:<br/>_bucket{le} (one series per boundary) + _sum + _count<br/>+Inf bucket == _count == total observations"]
+    HIST --- NOTE

@@ -1,0 +1,21 @@
+%% Topic 4 — Service Discovery is a 2-stage funnel: DISCOVER (huge) -> RELABEL keep/drop (small) -> ASSIGN/shard.
+%% Live numbers from the obsrv-ta Target Allocator (/jobs + opentelemetry_allocator_targets), meda-dev-koi 2026-06-07.
+flowchart TB
+    API["k8s API server"] -->|"kubernetes_sd roles:<br/>endpoints / pod / service / node"| DISC
+    subgraph DISC["DISCOVER — raw candidates (with __meta_kubernetes_* labels)"]
+        D1["kubernetes-apiservers: 302 endpoints"]
+        D2["kubernetes-pods: 182 pods"]
+        D3["serviceMonitor/mimir-ingester: 72 endpoints"]
+        D4["kubernetes-services (probe): 138"]
+        D5["prometheus-pushgateway: 138"]
+    end
+    DISC -->|"relabel_configs: action keep/drop<br/>+ ServiceMonitor selectors"| FILT
+    subgraph FILT["ACTIVE — survived the keep (else job vanishes from /jobs)"]
+        F1["apiservers -> 2"]
+        F2["pods -> 12"]
+        F3["mimir-ingester -> 2"]
+        F4["services -> 0  (no prometheus.io/probe) => NOT listed"]
+        F5["pushgateway -> 0  (no svc) => NOT listed"]
+    end
+    FILT -->|"consistent-hashing across collector replicas"| ASSIGN["ASSIGN / SHARD<br/>41 active -> obsrv-ta-collector-0"]
+    ASSIGN -->|"target list per collector (TA hands off, never scrapes)"| RECV["OTel prometheus receiver = Retrieval"]

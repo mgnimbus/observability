@@ -1,0 +1,22 @@
+%% Topic 4 — the same Target Allocator runs two sharding strategies in the same cluster, matched to the workload.
+%% Live: meda-dev-koi 2026-06-07. consistent-hashing (cluster services) vs per-node (node-local metrics).
+flowchart TB
+    subgraph CH["consistent-hashing  —  obsrv-ta (statefulset, HPA 1->10)"]
+        direction TB
+        CHt["13 jobs: apiservers, pods,<br/>9x mimir SM, loki, otel-collector<br/>41 active targets"]
+        CHc0["collector-0 : 41 targets (only replica today)"]
+        CHt --> CHc0
+        CHnote["scale: HPA adds replicas -> TA re-hashes,<br/>moves only ~1/N targets (minimum churn)"]
+    end
+    subgraph PN["per-node  —  obsrv-metrics-new (daemonset)"]
+        direction TB
+        PNt["3 jobs: kubernetes-nodes (kubelet),<br/>kubernetes-nodes-cadvisor,<br/>kubernetes-service-endpoints"]
+        PNc1["collector-74zhp @ node ip-10-0-2-226 : 4 targets"]
+        PNc2["collector-q5hs8 @ node ip-10-0-34-184 : 4 targets"]
+        PNc3["collector-wj6z6 @ node ip-10-0-18-65 : 4 targets"]
+        PNghost["collector-wcdws : 0  (ghost of a removed node — spot churn)"]
+        PNt --> PNc1
+        PNt --> PNc2
+        PNt --> PNc3
+        PNnote["each collector scrapes ONLY its own node's targets<br/>(localhost, no cross-node hop); scale: node count"]
+    end

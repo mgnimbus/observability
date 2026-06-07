@@ -3,8 +3,9 @@
 Format per entry: **what it does** / **what to watch (the gotcha that bites you)**.
 Read top-to-bottom = the telemetry journey in order.
 
-> Session recaps live in `learning/eod/`; diagram sources in `learning/diagrams/` (Mermaid).
-> Refresh this sheet whenever a new component/concept is covered.
+> Per-topic lessons live in `learning/eod/Topic<N>.md` (gold-standard format — see `Topic4.md`);
+> diagram sources in `learning/diagrams/` (Mermaid). Refresh this sheet whenever a new
+> component/concept is covered.
 
 ## Origin & collection (metrics)
 - **Telemetry** — The signals a system emits about itself: metrics, logs, traces (+ profiles). / It's data you *design in*, not free; every signal has a cost and a cardinality bill.
@@ -13,12 +14,16 @@ Read top-to-bottom = the telemetry journey in order.
 - **Exporter** — A process that translates some system's state into Prometheus-format metrics on `/metrics`. / It only *exposes*; something still has to scrape it. No scrape = no data.
 - **node-exporter** — DaemonSet exposing host/kernel metrics (CPU, mem, disk, net, filesystem). / Runs per-node; needs host mounts. Missing a node = blind spot, not an error.
 - **kube-state-metrics (KSM)** — Single Deployment that turns the K8s API object state into metrics (deploy replicas, pod phase, restarts). / It reports *desired/observed state*, not resource usage — that's node-exporter/cAdvisor. One replica = SPOF for that data.
-- **Pull / scrape model** — Prometheus periodically GETs `/metrics` from discovered targets. / Scrape interval + target count drive load; a slow target causes gaps, not retries.
+- **Pull / scrape model** — The *scraper* opens the connection and `GET`s `/metrics`; the target is a dumb page (push vs pull = **who initiates the TCP connection**). Your collector is the **pull→push pivot**: prometheus receiver pulls (HTTP), otlp exporter pushes (OTLP/gRPC) to Mimir; the TA discovers+assigns but **never scrapes**. / Pull needs an **inbound path to the target** — can't reach it ⇒ must push. Ephemeral/batch jobs outlive the scrape ⇒ Pushgateway. Four `/metrics` archetypes: node-exporter (host, `/proc`) · KSM (other objects, API) · app self-instrumentation (Mimir `cortex_*`, in-process) · cAdvisor (containers, cgroups, **via apiserver proxy**). A metric NAME never identifies a source — `job`+`instance` do.
+- **`up` / `scrape_*`** — Synthetic metrics the *scraper* (here the OTel `prometheus` receiver) emits per target per scrape: `up`=1 ok / 0 failed, plus `scrape_samples_scraped`, `scrape_samples_post_metric_relabeling`, `scrape_duration_seconds`, `scrape_series_added`. / `up==0` = discovered but scrape failed (TLS/auth/port) — checkpoint ② of the missing-metric walk. Triage with `count by(job)(up)` and `up==0`.
+- **Pushgateway** — A long-lived store that ephemeral/batch jobs **push** their final metrics to, so the scraper can **pull** them on its schedule (bridges push→pull for jobs that die before a scrape). / Anti-pattern outside batch: it **freezes the last value forever** (stale data after the job is gone) and is **always `up`** (you lose the job's liveness). We deleted a dead `prometheus-pushgateway` job — nothing deployed or pushing.
 
 ## Kubernetes-native discovery (Prometheus Operator)
 - **Prometheus Operator** — Controller that turns CRDs (Prometheus, ServiceMonitor, PodMonitor, PrometheusRule) into running Prometheus config. / You stop editing prometheus.yml; you create CRDs. Wrong label selectors = silently no targets.
 - **ServiceMonitor** — CRD that says "scrape the endpoints behind these Services." / Selector must match the Service's labels *and* the named port; mismatch = empty target list.
 - **PodMonitor** — Like ServiceMonitor but targets Pods directly (no Service needed). / Use when there's no Service; you lose Service-level labels in return.
+- **Target Allocator (TA)** — OTel-Operator component doing Prometheus' **Service Discovery + target sharding** for the collector(s): reads ServiceMonitor/PodMonitor/scrape_configs, watches the k8s API, computes the active target list, assigns a slice to each collector replica. The TA never scrapes. / Discovery is a funnel — discovered (huge) → relabel `keep`/`drop` (small) → assign; a job with 0 active targets vanishes from `/jobs`. Strategies: `per-node` (node-local, scale = nodes) vs `consistent-hashing` (cluster svcs, scale = HPA, only ~1/N churn on rescale). Inspect: port-forward `svc/<col>-targetallocator:80` → `/jobs`, `/jobs/<job>/targets`, `/metrics`.
+- **`exported_*` / `honor_labels`** — Collision rule when a scraped sample already carries a label that also exists as a target label (e.g. KSM's `pod`/`namespace`/`node`). / `honor_labels: false` (default) → the exposed label becomes `exported_<label>` (then relabel `exported_pod→pod` to recover it — surgical); `honor_labels: true` → the exposed label wins outright (used for **pushgateway** to preserve the pusher's original `job`/`instance`).
 
 ## OpenTelemetry
 - **OTel Collector** — Vendor-neutral pipeline that receives, processes, and exports telemetry (all 3 signals). / Two roles: *agent* (DaemonSet, per-node) and *gateway* (Deployment, central). Memory blowups come from missing `memory_limiter`.

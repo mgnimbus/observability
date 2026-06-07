@@ -1,0 +1,16 @@
+%% Topic 4 — the label pipeline, and where exported_* / honor_labels act.
+%% A label can be lost/renamed at any stage; find the first stage where it's present-before/absent-after.
+flowchart LR
+    META["SD meta-labels<br/>__meta_kubernetes_*<br/>(raw, pre-relabel)"] --> RC["relabel_configs<br/>build target labels:<br/>job, instance, node, pod"]
+    RC --> SCRAPE["SCRAPE /metrics<br/>collision handling:<br/>honor_labels=false -> exposed becomes exported_*<br/>honor_labels=true  -> exposed WINS (pushgateway)"]
+    SCRAPE --> MRC["metric_relabel_configs<br/>(per-sample drop/keep/rename)"]
+    MRC --> PROC["OTel processors<br/>attributes: +k8s_cluster_id, +otel_collector_id<br/>metricstransform: ^exported_(.*)$ -> $1"]
+    PROC --> MIMIR["Mimir (stored series labels)"]
+
+    subgraph KSM["KSM exported_* dance (meta_metrics service-endpoints job)"]
+        K1["KSM emits kube_pod_info{namespace,pod,node}"]
+        K2["relabel sets target pod=service_name -> COLLISION"]
+        K3["KSM's labels become exported_pod / exported_namespace / exported_node"]
+        K4["relabel copies exported_pod->pod, exported_node->node, exported_namespace->namespace<br/>(recover KSM's REAL identity)"]
+        K1 --> K2 --> K3 --> K4
+    end

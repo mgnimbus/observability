@@ -1,0 +1,12 @@
+%% Topic 4 — "a metric is missing": walk the 4 jobs in order; the FIRST stage where it is present-before/absent-after owns the bug.
+%% up==0 lives at rung 2 (Retrieval). Live: 2 apiserver targets are up==0 on meda-dev-koi.
+flowchart TD
+    START["Metric missing in Grafana"] --> Q1{"In the TA's /jobs?"}
+    Q1 -->|No| B1["BUG 1 — Service Discovery / relabel<br/>keep rule or SM selector dropped it<br/>(job with 0 active targets is not listed)"]
+    Q1 -->|Yes| Q2{"up == 1 ?"}
+    Q2 -->|"No (up==0)"| B2["BUG 2 — Retrieval / scrape failed<br/>network / TLS / auth / wrong port-path<br/>check scrape_*; OTel collector logs first"]
+    Q2 -->|Yes| Q3{"Pushed out of the collector?"}
+    Q3 -->|No| B3["BUG 3 — Push / pipeline<br/>otelcol_exporter_queue_size full,<br/>send failures, memory_limiter dropping"]
+    Q3 -->|Yes| Q4{"Mimir accepted it?"}
+    Q4 -->|No| B4["BUG 4 — Mimir reject<br/>cortex_discarded_samples_total{reason=...}<br/>per_metric_series_limit / out_of_order"]
+    Q4 -->|Yes| OK["Present: check it isn't just RENAMED<br/>(k8s_node_name vs node) or STALE (>5m)"]

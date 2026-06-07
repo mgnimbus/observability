@@ -1,0 +1,14 @@
+%% Topic 4 — "serverless Prometheus": the 4 Prometheus jobs split across components.
+%% Grounded in meda-dev-koi (ap-south-2). The TA never scrapes; the collector never discovers.
+flowchart LR
+    API["k8s API server"] -->|"watch ServiceMonitor/PodMonitor + endpoints/pod/node"| TA["Target Allocator<br/>JOB 1: Service Discovery + sharding"]
+    TA -->|"assigns target subset (per collector)"| C1["OTel Collector<br/>prometheus RECEIVER<br/>JOB 2: Retrieval / scrape"]
+    TGT["targets: node-exporter, KSM,<br/>cAdvisor/kubelet, app /metrics"] -.->|"PULL: GET /metrics"| C1
+    C1 -->|"PUSH: OTLP gRPC (snappy)"| D["Mimir distributor"]
+    D --> I["Mimir ingester<br/>JOB 3: TSDB (WAL + head block)"]
+    I -->|compact| S3["S3 blocks<br/>(durable, long-term)"]
+    I --> Q["Mimir querier / query-frontend<br/>JOB 4: PromQL engine"]
+    S3 --> SG["store-gateway"] --> Q
+    Q --> G["Grafana"]
+    R["Mimir ruler<br/>(rules manager)"] --> Q
+    R --> AM["Mimir alertmanager"]

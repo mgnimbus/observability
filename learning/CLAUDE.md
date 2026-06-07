@@ -19,7 +19,9 @@ Goal is **mastery, not memorization** — whiteboard fluency.
 
 ## My real environment (use these in every example — no generic placeholders)
 - Cloud: **AWS**, region **ap-south-2**, single primary account.
-- Cluster: EKS **`meda-dev-stud-eksdemotest`** (dev; torn down after experiments).
+- Cluster: EKS, **name rotates daily** — torn down at EOD, redeployed next morning under a
+  new `meda-dev-<word>-eksdemotest` (e.g. `meda-dev-koi-eksdemotest` on 2026-06-07). Never
+  hardcode it; discover the current name (recipe below).
 - AWS profile: **`obsrv`**.
 - Stack: Grafana OSS, **Mimir** (metrics), **Loki** (logs), **Tempo** (traces), OTel
   Collectors, kube-state-metrics, node-exporter, Prometheus Operator (ServiceMonitor/
@@ -39,8 +41,10 @@ Goal is **mastery, not memorization** — whiteboard fluency.
   daemon-spawned Claude sessions don't inherit sourced shell vars → 401. Hence static.
 - Kube context changes every session. Standard recipe:
   ```bash
+  CL=$(aws eks list-clusters --region ap-south-2 --profile obsrv \
+        --query 'clusters[0]' --output text)        # name rotates daily
   aws eks update-kubeconfig --region ap-south-2 --profile obsrv \
-    --name meda-dev-stud-eksdemotest --alias obsrv-dev
+    --name "$CL" --alias obsrv-dev
   kubectx obsrv-dev
   ```
 - Shell: zsh + starship + WezTerm (leader Ctrl-a, no tmux). Terminal-native, no GUIs.
@@ -59,8 +63,12 @@ Goal is **mastery, not memorization** — whiteboard fluency.
 4. **Always cover, in order:** WHY it exists → WHAT problem it solves → HOW it works
    internally → HOW it scales → COMMON FAILURE MODES.
 5. **Ground it** in a concrete AWS/EKS/LGTM example from *my* stack above.
-6. **Quiz me** at the end. Do **not** advance to the next topic until I answer correctly.
-   Log the result in `progress.md`.
+6. **Quiz me at the end — exam-grade, not a vibe check.** Ask MULTIPLE questions (3+), no
+   leading, no hints, never give away the answer inside the question. Mark wrong answers
+   **wrong out loud**, make me correct them, and probe follow-ups until the gap actually
+   closes. Do **not** advance until I answer correctly *on my own* — I am fine answering more
+   questions, so err toward more rigor, not less. Log the result + the gap it revealed in
+   `progress.md`.
 
 ### Per-answer structure (use this shape for any substantive explanation)
 `Concept → Why it exists → How it works → AWS/EKS example → Architecture diagram →
@@ -88,19 +96,30 @@ practices → Quiz.`
 
 ---
 
-## End-of-day (EOD) protocol — do this without being re-asked
-When I signal the end of a session ("call it a day", "EOD", "let's resume from here"):
-> **EOD docs are verbose** — full, self-contained explanations meant for cold revision
-> months later (definitions, reasoning, trade-offs, worked examples, memorize-list). The
-> terse high-signal house style applies to *live* teaching, **not** to these recaps.
-1. **Write/refresh `learning/eod/YYYY-MM-DD.md`:** TL;DR · what was learned (revisable
-   bullets) · corrections/misconceptions caught · the day's diagram(s) as ```mermaid```
-   fenced blocks · a **"Resume here"** section naming the exact next topic and any
-   **pending questions copied verbatim**.
+## Per-topic doc protocol — do this without being re-asked
+**One markdown file per topic** (no dated EOD files): `learning/eod/Topic<N>.md`. Write/refresh
+it when a topic is mastered (quiz passed) or when I signal end-of-session ("call it a day",
+"EOD", "resume from here").
+> **These docs are VERBOSE / recollection-grade** — full, self-contained explanations for cold
+> revision months later with zero session memory: definitions, reasoning, trade-offs, worked
+> examples, **every scenario/example + live excerpt and numbers discussed**, memorize-list. The
+> terse high-signal house style applies to *live* teaching, **not** to these docs. **Default to
+> MAXIMAL verbosity on the first pass — err toward more. If I ask you to "expand" a Topic doc, the
+> first pass under-delivered; capture it all the first time.**
+
+1. **Write/refresh `learning/eod/Topic<N>.md` in the `Topic4.md` GOLD-STANDARD structure**
+   (every future doc must look like `Topic4.md`):
+   - Title + blockquote anchor (one-line "the idea that unlocks this topic").
+   - **WHY it exists → WHAT it is → HOW it works internally → grounded in MY stack (live data) →
+     HOW it scales / trade-offs → COMMON FAILURE MODES → practical exercises (live cluster) →
+     memorize one-liners → quiz result.**
+   - **Embed EVERY diagram inline as a ```mermaid``` fenced block** (don't just reference the
+     `.mmd`) — diagrams are how I recollect.
+   - Use real live numbers from my cluster, not textbook values.
 2. **Update `progress.md`** (statuses, quiz history, misconceptions) and
    **`component-cheatsheet.md`** if a new component/concept was covered.
-3. **Save reusable diagram sources** under `learning/diagrams/` (`.mmd`).
-4. Commit + push the `learning/` changes so the recap renders on GitHub for revision.
+3. **Save reusable diagram sources** under `learning/diagrams/` (`.mmd`) *in addition to* inlining them.
+4. Commit + push the `learning/` changes (only when I ask) so the docs render on GitHub for revision.
 
 ## Diagrams — Mermaid only (no hand-drawn ASCII flow diagrams; they break in my terminal)
 - Preferred: the `mermaid` MCP (`mermaid_preview` → `mermaid_save`) for PNG/SVG.
