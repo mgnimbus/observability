@@ -1,0 +1,10 @@
+%% Topic 6 — the scrape lifecycle, one cycle end-to-end (identity = fingerprint(__name__ + labels))
+flowchart TB
+  A["scheduler fires (per scrape_interval, jittered)"] --> B["build URL: __scheme__://__address__ + __metrics_path__"]
+  B --> C["HTTP GET (deadline = scrape_timeout)"]
+  C --> D["parse exposition text into samples"]
+  D --> E["apply metric_relabel_configs (per sample)"]
+  E --> F["fingerprint = hash(__name__ + full label set) -> series ID"]
+  F --> G["append (timestamp, value) to that series"]
+  C -.->|outcome| H["synthesize up + scrape_duration_seconds / scrape_samples_scraped / scrape_series_added"]
+  G --> I["series seen last scrape but absent now -> staleness marker"]

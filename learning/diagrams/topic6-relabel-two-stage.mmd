@@ -1,0 +1,5 @@
+%% Topic 6 — the two relabeling stages (target-level pre-scrape vs per-sample post-scrape)
+flowchart LR
+  META["__meta_kubernetes_* (SD metadata) + __address__/__scheme__/__metrics_path__"] -->|"relabel_configs — TARGET-level, PRE-scrape"| TGT["final target: address, path, job, instance, kept labels"]
+  TGT -->|"GET /metrics"| RAW["raw scraped samples (series labels)"]
+  RAW -->|"metric_relabel_configs — PER-SAMPLE, POST-scrape (cardinality lever)"| STORED["stored series"]

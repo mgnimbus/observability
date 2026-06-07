@@ -1,0 +1,5 @@
+%% Topic 6 — discover -> relabel -> assign (the SD funnel), live apiservers 306 -> 2
+flowchart LR
+  SD["role: endpoints — 306 candidates (every endpoint in the cluster)"] -->|"relabel_configs: action keep"| KEEP["keep regex default;kubernetes;https on [namespace; service_name; endpoint_port_name]"]
+  KEEP --> ACTIVE["2 active targets — 10.0.52.135:443, 10.0.53.60:443"]
+  ACTIVE -->|"consistent-hashing"| ASSIGN["assigned to a collector replica (TA never scrapes)"]
