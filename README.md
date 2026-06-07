@@ -127,3 +127,16 @@ mimir http://mimir-nginx.mimir/prometheus
 tempo tempo-distrubuted-query-frontend.tempo:3200
 
 with X-Scope-OrgId as obsrv
+
+
+claude --resume 62e8834e-df7c-4411-8c81-e9e95ee12b32
+
+ Goal is mastering the LGTM telemetry flow via guided lessons; the platform is deployed and Topics 1-2 (telemetry, what a metric is) are done. Next action: answer the three Topic 3 metric-types questions in learning/eod/2026-06-06.md to resume.
+
+Phase 1 · Topic 3 — Metric types (counter / gauge / histogram / summary). Assess first — three questions, from memory:
+
+Q1 — Type your own metric. node_cpu_seconds_total — which of the four types is it, and what one feature in the name/behavior tells you? Then: a number that only ever climbs is meaningless on a dashboard raw — what do you wrap it in, and what expression gives you "CPU busy %" from it?
+
+Q2 — Counter vs gauge. Why is rate() valid on a counter but nonsense on a gauge? Give one example of each from your stack (node-exporter / KSM / Mimir all have both).
+
+Q3 — Histogram (the deep one). You record request latency as a histogram. What series does Mimir actually store on disk — i.e., what suffixes show up? And the trap: why can you aggregate a histogram across all your pods but you cannot do the same with a summary?

@@ -30,3 +30,11 @@ resource "kubectl_manifest" "scrapeconfigs" {
   # metadata.annotations limit.
   server_side_apply = true
 }
+
+resource "kubectl_manifest" "servicemonitors" {
+  yaml_body = file("${path.module}/manifests/servicemonitor.yaml")
+  # ScrapeConfig is a large CRD (big OpenAPI schema). Server-side apply avoids the
+  # client-side `last-applied-configuration` annotation that exceeds the 262144-byte
+  # metadata.annotations limit.
+  server_side_apply = true
+}

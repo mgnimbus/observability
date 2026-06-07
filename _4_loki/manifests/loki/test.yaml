@@ -303,3 +303,7 @@ test:
   enabled: false
 lokiCanary:
   enabled: false
+
+monitoring:
+  serviceMonitor:
+    enabled: true

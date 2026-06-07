@@ -176,3 +176,7 @@ rollout_operator:
 
 minio:
   enabled: false
+
+metaMonitoring:
+  serviceMonitor:
+    enabled: true

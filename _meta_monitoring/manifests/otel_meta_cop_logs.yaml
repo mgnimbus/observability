@@ -257,7 +257,7 @@ config:
       metrics:
         level: detailed
       logs:
-        level: debug
+        level: error
     extensions: [health_check, headers_setter]
     pipelines:
       logs:

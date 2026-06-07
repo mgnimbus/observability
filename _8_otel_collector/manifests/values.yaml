@@ -185,3 +185,8 @@ resources:
   limits:
     cpu: 1
     memory: 4Gi
+
+serviceMonitor:
+  enabled: true
+  metricsEndpoints:
+    - port: metrics
