@@ -6,8 +6,8 @@ not advance until the current topic is mastered.
 
 Legend: ⬜ not started · 🟡 in progress · ✅ mastered (quiz passed) · 🔁 needs review
 
-**Current focus:** Phase 1 · sequential — **T5 Pull model ✅ (2026-06-07)** just mastered. KSM-internals deep-dive parked at Part 1.
-**Next up:** T6 — *Scraping* (deep-dive parts P4·P5·P6 fold in here).
+**Current focus:** Phase 1 · sequential, **each topic taught at deep-dive depth inline** (user decision 2026-06-07) — the separate 10-part deep-dive is retired as a standalone track; its parts fold into the matching sequential topic. T6 Scraping taught consolidated (P4–P6 folded in); quiz parked.
+**Next up:** T7 — *Exporters* (deep); then T8 — *node-exporter* (deep, = old P2).
 
 ---
 
@@ -15,6 +15,10 @@ Legend: ⬜ not started · 🟡 in progress · ✅ mastered (quiz passed) · �
 The remaining metrics topics are taught as a **10-part internals deep-dive** (user requested
 2026-06-07) — one part/session, gated (interview-level Qs), grounded live, ≥1 Mermaid +
 EKS/Grafana exercise each. The **Deep-dive** column tags which part(s) cover each topic.
+**Updated 2026-06-07 (supersedes the standalone track):** deep-dive depth is now delivered
+**inline at each sequential topic** (T7 exporters deep · T8 node-exporter = P2 · T9 KSM = P1 ·
+T10/T12 = P3 · …). The Deep-dive column below still maps topic→part(s) for reference; we no longer
+follow the separate P1→P10 order.
 **Active order:** **P1** KSM `kube_pod_info` gen, informers/shared-cache (T9) → **P2**
 node-exporter `/proc`+`/sys`, `node_cpu_seconds_total` kernel→exposition (T8) → **P3**
 ServiceMonitor→Operator→generated config→reload, config-reloader sidecar (T10/T12) → **P4**
@@ -33,7 +37,7 @@ scrape→WAL→Mimir→S3→Grafana (T28).
 | 3 | Metric types | ✅ | pass | — | mastered 2026-06-07 (re-ask): sum-by-le merges same-`le` bucket rates across sources; summary quantiles can't be merged. counter/gauge/histogram solid; grounded on live cortex histogram. see eod/Topic3.md |
 | 4 | Prometheus architecture | ✅ | pass | — | mastered 2026-06-07 (live TA hands-on): 4 jobs = TA(SD)+OTel receiver(retrieval)+Mimir(TSDB/PromQL/ruler/AM); SD funnel discover→relabel→assign; per-node vs consistent-hashing; up==0 troubleshoot ladder; exported_*/honor_labels. see eod/Topic4.md |
 | 5 | Pull model | ✅ | pass | — | mastered 2026-06-07 (4 live /metrics archetypes — node-exporter/KSM/Mimir/cAdvisor): pull = scraper initiates GET; collector = pull→push pivot, TA never scrapes; up = scrape-success ≠ app-health (500→up=0); counter location (kernel survives pod restart vs in-process resets that rate() heals); ephemeral→Pushgateway (stale value + breaks up); unreachable→push. see eod/Topic5.md |
-| 6 | Scraping | ⬜ | – | P4·P5·P6 | |
+| 6 | Scraping | 🟡 | – | P4·P5·P6 | taught consolidated 2026-06-07 (P4–P6 folded): SD roles; discover→relabel→assign (apiservers 306→2 via `keep`); two relabel stages (relabel_configs target-level vs metric_relabel_configs = cardinality lever); `__` label lifecycle + instance defaults to `__address__`; scrape→fingerprint→series. Quiz parked; Topic6.md pending |
 | 7 | Exporters | ⬜ | – | — | |
 | 8 | node-exporter | ⬜ | – | P2 | |
 | 9 | kube-state-metrics | 🟡 | – | **P1** ← current | active deep-dive part |
