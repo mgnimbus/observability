@@ -106,8 +106,10 @@ config:
   service:
     extensions: [health_check, headers_setter]
     telemetry:
-      metrics: {}
-      logs: {}
+      metrics:
+        level: normal
+      logs:
+        level: error
     pipelines:
       metrics:
         receivers: [otlp]
@@ -188,5 +190,6 @@ resources:
 
 serviceMonitor:
   enabled: true
+  interval: 60s
   metricsEndpoints:
     - port: metrics

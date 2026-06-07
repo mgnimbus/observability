@@ -180,3 +180,4 @@ minio:
 metaMonitoring:
   serviceMonitor:
     enabled: true
+    interval: 60s

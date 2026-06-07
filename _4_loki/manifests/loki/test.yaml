@@ -49,6 +49,7 @@ loki:
       enabled: true
     serviceMonitor:
       enabled: true
+      interval: 60s
     selfMonitoring:
       enabled: true
       tenant:
@@ -303,7 +304,3 @@ test:
   enabled: false
 lokiCanary:
   enabled: false
-
-monitoring:
-  serviceMonitor:
-    enabled: true
