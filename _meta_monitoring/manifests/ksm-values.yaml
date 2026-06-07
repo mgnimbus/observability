@@ -1,0 +1,20 @@
+# kube-state-metrics — ServiceMonitor migration (TEMPLATE for the other helm charts).
+# Replaces annotation discovery (the `kubernetes-service-endpoints` job) with a chart-native
+# ServiceMonitor. There is ONE prometheusCR plane (the statefulset TA, meta_ta) which matches
+# all ServiceMonitors, so no tier label is needed — just enable the SM + de-annotate the source.
+#
+# To replicate: enable each chart's own SM/PodMonitor toggle (node-exporter
+# `prometheus.monitor.enabled`, cert-manager `prometheus.podmonitor.enabled`, etc.) and turn off
+# its scrape annotation (the de-annotate knob differs per chart — see OPTIMIZATION.md).
+prometheus:
+  monitor:
+    enabled: true
+    http:
+      interval: 60s                   # match the global 60s scrape_interval (cost)
+      honorLabels: true               # KSM exposes the DESCRIBED object's pod/namespace/node
+                                      # -> let them win (clean labels); no exported_* relabel
+# Drop KSM's `prometheus.io/scrape: "true"` so it leaves the annotation job — otherwise it's
+# double-scraped (SM + service-endpoints). NOTE: the KSM chart adds this via the TOP-LEVEL
+# `prometheusScrape` knob, NOT `service.annotations` (each chart differs: cert-manager uses
+# `prometheus.enabled`, etc. — find the per-chart knob when you replicate).
+prometheusScrape: false

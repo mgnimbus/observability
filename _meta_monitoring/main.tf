@@ -22,6 +22,7 @@ resource "helm_release" "kube_state_metrics" {
   namespace        = kubernetes_namespace.meta_monitoring.metadata[0].name
   version          = "6.2.0"
   create_namespace = false
+  values           = [file("${path.module}/manifests/ksm-values.yaml")]
   depends_on       = [helm_release.metrics_server]
 }
 
@@ -30,11 +31,19 @@ resource "helm_release" "node_exporter" {
 
   repository       = "https://prometheus-community.github.io/helm-charts"
   chart            = "prometheus-node-exporter"
-  version          = "4.45.0"
+  version          = "4.55.0"
   create_namespace = false
   namespace        = kubernetes_namespace.meta_monitoring.metadata[0].name
-}
 
+  set {
+    name  = "service.annotations"
+    value = "null"
+  }
+  set {
+    name  = "prometheus.monitor.enabled"
+    value = "true"
+  }
+}
 
 resource "helm_release" "otel_meta_cop_logs" {
   name = "otel-meta-cop-logs"

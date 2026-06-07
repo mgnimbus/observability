@@ -19,6 +19,9 @@ serviceAccount:
 rbac:
   create: true
 
+serviceMonitor:
+  enabled: true
+
 podSecurityContext:
   fsGroup: 65534
 

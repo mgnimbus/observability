@@ -1,18 +1,31 @@
-apiVersion: opentelemetry.io/v1alpha1
+apiVersion: opentelemetry.io/v1beta1
 kind: OpenTelemetryCollector
 metadata:
   name: ${collector_id}
   namespace: ${namespace}
 spec:
   mode: daemonset
-  image: otel/opentelemetry-collector-contrib:0.130.0
+  # Operator manages a ServiceMonitor for this collector's :8888 internal telemetry
+  # (discovered by the prometheusCR TA) and stops auto-injecting prometheus.io/scrape
+  # pod annotations -> single deterministic discovery path, no annotation/SM overlap.
+  observability:
+    metrics:
+      enableMetrics: true
+      disablePrometheusAnnotations: true
+  image: otel/opentelemetry-collector-contrib:0.152.0
   serviceAccount: ${service_account}
   targetAllocator:
     enabled: true
-    image: ghcr.io/open-telemetry/opentelemetry-operator/target-allocator:0.123.0
+    image: ghcr.io/open-telemetry/opentelemetry-operator/target-allocator:0.152.0
     replicas: 1
     allocationStrategy: per-node
     serviceAccount: ${service_account}
+    # Per-node allocation for the STATIC node jobs only (kubelet `kubernetes-nodes`,
+    # `kubernetes-nodes-cadvisor`). CRD discovery is intentionally NOT enabled here: a single
+    # prometheusCR plane lives on the statefulset TA (meta_ta). Two CRD-discovering TAs would
+    # need disjoint selectors to avoid double-scrape — one plane removes that whole class of
+    # drift, and nothing consumes `otel_collector_id`, so central scraping of KSM/node-exporter
+    # via the statefulset is fine.
   resources:
     requests:
       cpu: 50m
@@ -47,12 +60,12 @@ spec:
   tolerations:
     - effect: NoSchedule
       operator: Exists
-  config: |
+  config:
     receivers:
       prometheus:
         config:
           global:
-            scrape_interval: 30s
+            scrape_interval: 60s
             scrape_timeout: 10s
           scrape_configs:
             - job_name: kubernetes-nodes
@@ -104,7 +117,7 @@ spec:
                 - role: endpoints
               relabel_configs:
                 - action: keep
-                  regex: true
+                  regex: "true"
                   source_labels:
                     - __meta_kubernetes_service_annotation_prometheus_io_scrape
                 - action: replace
@@ -196,7 +209,9 @@ spec:
       extensions: [headers_setter]
       telemetry:
         metrics:
-          level: detailed
+          # must be a string (none|basic|normal|detailed); `{}` breaks the operator's
+          # telemetry unmarshal and blocks enableMetrics' ServiceMonitor creation.
+          level: normal
         logs:
           level: error
       pipelines:

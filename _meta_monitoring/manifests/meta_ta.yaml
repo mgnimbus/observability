@@ -1,17 +1,28 @@
-apiVersion: opentelemetry.io/v1alpha1
+apiVersion: opentelemetry.io/v1beta1
 kind: OpenTelemetryCollector
 metadata:
   name: ${collector_id}
   namespace: ${namespace}
 spec:
   mode: statefulset
-  image: otel/opentelemetry-collector-contrib:0.130.0
+  # Operator manages a ServiceMonitor for this collector's :8888 internal telemetry
+  # (discovered by the prometheusCR TA) and stops auto-injecting prometheus.io/scrape
+  # pod annotations -> single deterministic discovery path, no annotation/SM overlap.
+  observability:
+    metrics:
+      enableMetrics: true
+      disablePrometheusAnnotations: true
+  image: otel/opentelemetry-collector-contrib:0.152.0
   targetAllocator:
     enabled: true
-    image: ghcr.io/open-telemetry/opentelemetry-operator/target-allocator:0.123.0
+    image: ghcr.io/open-telemetry/opentelemetry-operator/target-allocator:0.152.0
     replicas: 1
     prometheusCR:
       enabled: true
+      # SINGLE cluster-wide prometheusCR plane: discovers ALL ServiceMonitors (loki, mimir/*,
+      # kube-state-metrics, node-exporter, cert-manager, ...). No tier label to reason about —
+      # there is no second CRD-discovering TA to partition against. `{}` = match all.
+      serviceMonitorSelector: {}
     serviceAccount: ${service_account}
   serviceAccount: ${service_account}
   volumes:
@@ -37,6 +48,8 @@ spec:
     targetCPUUtilization: 70
     targetMemoryUtilization: 70
   env:
+    - name: GOMEMLIMIT
+      value: "4250MiB"
     - name: "K8S_NODE_NAME"
       valueFrom:
         fieldRef:
@@ -49,12 +62,12 @@ spec:
       valueFrom:
         fieldRef:
           fieldPath: "metadata.namespace"
-  config: |
+  config:
     receivers:
       prometheus:
         config:
           global:
-            scrape_interval: 30s
+            scrape_interval: 60s
             scrape_timeout: 10s
           scrape_configs:
           - job_name: kubernetes-apiservers
@@ -71,34 +84,6 @@ spec:
             scheme: https
             tls_config:
               ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
-          - job_name: kubernetes-services
-            kubernetes_sd_configs:
-            - role: service
-            metrics_path: /probe
-            params:
-              module:
-              - http_2xx
-            relabel_configs:
-            - action: keep
-              regex: true
-              source_labels:
-              - __meta_kubernetes_service_annotation_prometheus_io_probe
-            - source_labels:
-              - __address__
-              target_label: __param_target
-            - replacement: blackbox
-              target_label: __address__
-            - source_labels:
-              - __param_target
-              target_label: instance
-            - action: labelmap
-              regex: __meta_kubernetes_service_label_(.+)
-            - source_labels:
-              - __meta_kubernetes_namespace
-              target_label: kubernetes_namespace
-            - source_labels:
-              - __meta_kubernetes_service_name
-              target_label: kubernetes_name
           - job_name: kubernetes-pods
             kubernetes_sd_configs:
             - role: pod
@@ -106,7 +91,7 @@ spec:
                 - role: pod
             relabel_configs:
             - action: keep
-              regex: true
+              regex: "true"
               source_labels:
               - __meta_kubernetes_pod_annotation_prometheus_io_scrape
             - action: replace
@@ -143,20 +128,8 @@ spec:
               regex: Pending|Succeeded|Failed|Completed
               source_labels:
               - __meta_kubernetes_pod_phase
-          - job_name: prometheus-pushgateway
-            honor_labels: true
-            kubernetes_sd_configs:
-            - role: service
-            relabel_configs:
-            - action: keep
-              regex: pushgateway
-              source_labels:
-              - __meta_kubernetes_service_annotation_prometheus_io_probe
 
     extensions:
-      sigv4auth:
-        region: "ap-south-2"
-        service: "aps"
       headers_setter:
         headers:
           - action: upsert
@@ -164,6 +137,10 @@ spec:
             from_context: X-Scope-OrgId
 
     processors:
+      memory_limiter:
+        limit_mib: 4200
+        spike_limit_mib: 1000
+        check_interval: 1s
       batch/metrics:
         send_batch_max_size: 1000
         timeout: 1s
@@ -196,11 +173,13 @@ spec:
       extensions: [headers_setter]
       telemetry:
         metrics:
-          level: detailed
+          # must be a string (none|basic|normal|detailed); `{}` breaks the operator's
+          # telemetry unmarshal and blocks enableMetrics' ServiceMonitor creation.
+          level: normal
         logs:
           level: error
       pipelines:
         metrics:
           receivers: [prometheus]
-          processors: [attributes,metricstransform, batch/metrics]
+          processors: [memory_limiter, attributes, metricstransform, batch/metrics]
           exporters: [otlp]

@@ -295,3 +295,9 @@ resources: {}
 #   limits:
 #     cpu: 500m
 #     memory: 512Mi
+
+serviceMonitor:
+  enabled: true
+  interval: 60s
+  metricsEndpoints:
+    - port: metrics
