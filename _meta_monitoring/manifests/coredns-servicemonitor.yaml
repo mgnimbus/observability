@@ -1,0 +1,19 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: kube-dns
+  namespace: kube-system
+  labels:
+    app.kubernetes.io/name: coredns
+spec:
+  # The EKS-managed kube-dns Service already exposes a named `metrics` port (:9153) and carries
+  # label k8s-app=kube-dns. CoreDNS instruments itself (coredns_*), subject = itself, so no
+  # honorLabels — the scrape's instance=podIP:9153 is the correct identity.
+  # Discovered by the statefulset TA (serviceMonitorSelector: {} matches all SMs cluster-wide).
+  selector:
+    matchLabels:
+      k8s-app: kube-dns
+  endpoints:
+    - port: metrics
+      interval: 60s
+      path: /metrics

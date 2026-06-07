@@ -240,8 +240,18 @@ source object/exporter doesn't exist):
 `meta_ta.yaml` now carries only `kubernetes-apiservers` + `kubernetes-pods` static jobs (the
 latter retired in Wave 5) plus the prometheusCR plane.
 
-## Deferred — do later (noted 2026-06-07)
-Both are explicitly parked; everything else in this consolidation is migrated + verified.
+## Deferred — RESOLVED 2026-06-07 (staged, pending `terraform apply`)
+Both items are now fixed (staged). What was done:
+- **(c) apiserver RBAC:** added `nonResourceURLs: ["/metrics"]` / `verbs: ["get"]` to ClusterRole
+  `otel-ta-role` (`manifests/clusterrole.yaml`) → `kubernetes-apiservers` should flip `up=0 → up=1`.
+- **kube-dns / CoreDNS:** hand-authored `manifests/coredns-servicemonitor.yaml` (selects the
+  EKS `kube-dns` Service's named `metrics`:9153 port) + wired `kubectl_manifest.coredns_servicemonitor`
+  in `main.tf`; **removed** the now-single-member `kubernetes-service-endpoints` job from
+  `meta_metrics.yaml` (kube-dns keeps its EKS-managed `prometheus.io/scrape`, so SM + that job would
+  double-scrape). Annotation-based discovery is now **fully retired** — the daemonset runs only
+  `kubernetes-nodes` + `kubernetes-nodes-cadvisor`.
+
+Original problem notes (kept for context):
 
 - **(c) `kubernetes-apiservers` job — `up==0`.** Reachable on EKS (kube-apiserver `/metrics` via
   `kubernetes.default.svc:443`); down purely because the collector SA lacks the non-resource grant

@@ -107,6 +107,13 @@ resource "kubectl_manifest" "clusterrolebinding" {
   yaml_body = file("${path.module}/manifests/clusterrolebinding.yaml")
 }
 
+# ServiceMonitor for EKS CoreDNS (the kube-dns Service already exposes a named `metrics` port :9153).
+# Replaces the annotation-based kubernetes-service-endpoints scrape: kube-dns keeps its EKS-managed
+# prometheus.io/scrape annotation, so that job was removed from meta_metrics.yaml to avoid a double-scrape.
+resource "kubectl_manifest" "coredns_servicemonitor" {
+  yaml_body = file("${path.module}/manifests/coredns-servicemonitor.yaml")
+}
+
 # Secret containing the CA cert for internal clients to trust the server
 resource "kubernetes_secret_v1" "otel_internal_ca" {
   metadata {
