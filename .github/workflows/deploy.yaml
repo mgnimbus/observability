@@ -63,10 +63,40 @@ jobs:
           terraform plan -lock-timeout=5m -out=tfplan
           terraform apply -lock-timeout=5m -auto-approve tfplan
 
+  crds:
+    name: "CRDs"
+    needs: primary-infrastructure
+    if: github.event.inputs.deploy_monitoring == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6.0.3
+        with:
+          ref: ${{ github.ref }}
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v6.2.0
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v4.0.1
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+      - name: Update kubeconfig
+        run: |
+          cd _1_eks && terraform init
+          aws eks update-kubeconfig --region ${{ env.AWS_REGION }} --name "$(terraform output -raw cluster_name)"
+      - name: Deploy CRDs
+        working-directory: ./_1.3_crd
+        run: |
+          terraform init
+          terraform plan -lock-timeout=5m -out=tfplan
+          terraform apply -lock-timeout=5m -auto-approve tfplan
+
   # Deploy secondary infrastructure (load balancer + cert)
   secondary-infrastructure:
     name: "Deploy Secondary Infrastructure"
-    needs: primary-infrastructure
+    needs: crds
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false # one failed leg must not cancel siblings mid-apply (orphans locks)
@@ -117,47 +147,15 @@ jobs:
           terraform apply -lock-timeout=5m -auto-approve tfplan
 
   # ── Monitoring stack — deployed in STRICT STAGES, each waiting for the previous ──
-  #   0 CRDs → 1 nginx-ingress → 2 backends (loki/mimir/tempo) → 3 otel (operator→collector)
+  #     1 nginx-ingress → 2 backends (loki/mimir/tempo) → 3 otel (operator→collector)
   #   → 4 grafana → 5 meta-monitoring
   # Real ordering comes from `needs:`. The old single matrix + `order`/sleep actually ran
   # everything at once (sleep was a hack); this guarantees dependencies are up first.
 
-  # Stage 0 — CRDs (ScrapeConfig CustomResourceDefinition). No prerequisites; must exist
-  # before anything references it. _1.3_crd applies the CRD only.
-  monitoring-crd:
-    name: "Monitoring · 0 · CRDs"
-    needs: secondary-infrastructure
-    if: github.event.inputs.deploy_monitoring == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6.0.3
-        with:
-          ref: ${{ github.ref }}
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v6.2.0
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ env.AWS_REGION }}
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v4.0.1
-        with:
-          terraform_version: ${{ env.TF_VERSION }}
-      - name: Update kubeconfig
-        run: |
-          cd _1_eks && terraform init
-          aws eks update-kubeconfig --region ${{ env.AWS_REGION }} --name "$(terraform output -raw cluster_name)"
-      - name: Deploy CRDs
-        working-directory: ./_1.3_crd
-        run: |
-          terraform init
-          terraform plan -lock-timeout=5m -out=tfplan
-          terraform apply -lock-timeout=5m -auto-approve tfplan
-
   # Stage 1 — ingress entrypoint
   monitoring-nginx:
     name: "Monitoring · 1 · nginx-ingress"
-    needs: monitoring-crd
+    needs: secondary-infrastructure
     if: github.event.inputs.deploy_monitoring == 'true'
     runs-on: ubuntu-latest
     steps:
