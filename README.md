@@ -140,3 +140,5 @@ Q1 — Type your own metric. node_cpu_seconds_total — which of the four types 
 Q2 — Counter vs gauge. Why is rate() valid on a counter but nonsense on a gauge? Give one example of each from your stack (node-exporter / KSM / Mimir all have both).
 
 Q3 — Histogram (the deep one). You record request latency as a histogram. What series does Mimir actually store on disk — i.e., what suffixes show up? And the trap: why can you aggregate a histogram across all your pods but you cannot do the same with a summary?
+
+claude --resume d6c17d5b-1de5-440c-b31a-07a4d73869c6

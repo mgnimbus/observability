@@ -282,3 +282,47 @@ Original problem notes (kept for context):
 - **No coverage loss:** `count(up == 0)` does not increase; `sum(cortex_ingester_memory_series)` ≈ flat.
 - **k8s-level proof the de-annotation took:** `kubectl -n <ns> get svc|pod <name>
   -o jsonpath='{.metadata.annotations}'` shows no `prometheus.io/scrape`.
+
+---
+
+## apiserver_*/etcd_* cardinality drop — STAGED 2026-06-10 (pending `terraform apply`)
+
+Baseline on fresh cluster `meda-dev-mule-eksdemotest` (direct Mimir query, MCP was down): with the
+RBAC grant applied, `kubernetes-apiservers` is **2/2 up** and scrapes **~34,428 samples/target ≈
+68.9k of 123.4k total (~56% of all ingest)**. Top series-by-name are almost entirely control-plane
+histogram buckets: `apiserver_request_duration_seconds_bucket` (12744), `etcd_request_duration_
+seconds_bucket` (11088), `apiserver_request_sli_duration_seconds_bucket` (8140),
+`apiserver_request_body_size_bytes_bucket` (5984), `apiserver_watch_*`, `apiserver_storage_*`, …
+
+**Consumption re-verified 2026-06-10 (now that the series actually exist):**
+- repo (`*.json/*.yaml/*.jsonnet`): **0** references to `apiserver_`/`etcd_request`.
+- Mimir ruler: **0 rules loaded** (no alerts, no recording rules).
+- **Dashboards — check the repo source, NOT a configmap grep.** All 31 dashboards are JSON files in
+  **`_9_grafana_dashboards/dashboards/{mimir,k8s,OtelCol}/`**, pushed to Grafana by the Terraform
+  Grafana provider (`grafana_dashboard`, `overwrite=true`) — no ConfigMaps/sidecar, which is why a
+  `kubectl get cm` scan was a false negative. `grep -rlE 'apiserver_|etcd_' dashboards/` = **0**; the
+  dotdc **"Kubernetes / System / API Server"** dashboard (the only one that would use `apiserver_*`)
+  is **not in the repo**. Drop confirmed safe (cross-checked live via Grafana MCP).
+- ⚠️ Contrast: `thanos_objstore_*` IS consumed by **6** Mimir dashboards (overview, object-store,
+  compactor, reads, ruler, writes) — Mimir's S3 objstore client, not stray Thanos. Do NOT drop it.
+
+**Action:** added `metric_relabel_configs` to the `kubernetes-apiservers` job in `meta_ta.yaml`
+dropping the whole family (`regex: (apiserver|etcd)_.*`, `action: drop`). Chosen over dropping the
+job so we **keep `up`/`scrape_*`** (synthesized post-scrape, unaffected → target stays up=1) and the
+still-useful `workqueue_*`/`go_*`/`process_*`/`rest_client_*` from the same endpoint. Expected effect:
+~69k series shed, active series roughly halved (`sum(cortex_ingester_memory_series)` ≈ 243.7k → ~105k).
+Re-add a `keep` list (e.g. `apiserver_request_(total|duration_seconds.*)`) if/when an API-latency/APF
+SLO panel is actually built. EKS caveat unchanged: only the apiserver is exposed; scheduler / CM /
+etcd-server metrics are managed-plane and unreachable.
+
+**Validate after apply:** `count(up==0)` unchanged (apiservers stay 2/2 up); `sum(scrape_samples_
+scraped{job="kubernetes-apiservers"})` drops from ~69k to a few k; `count({__name__=~"apiserver_.+"})`
+→ 0; `sum(cortex_ingester_memory_series)` ≈ halves.
+
+**Also removed in this batch — dead `kubernetes-pods` job (`meta_ta.yaml`).** Annotation-based
+(`role: pod`, `keep` on `prometheus.io/scrape="true"`) with **0 live targets** — the consolidation
+moved every workload to ServiceMonitors and nothing carries pod scrape-annotations. Cut the whole
+block. Post-state: the only remaining **static** scrape jobs are `kubernetes-apiservers` (TA) and
+`kubernetes-nodes` + `kubernetes-nodes-cadvisor` (daemonset); everything else is ServiceMonitor-
+discovered via the single `prometheusCR` plane. (`kubernetes-services` blackbox-probe and
+`prometheus-pushgateway` jobs were already retired in the earlier consolidation.)
