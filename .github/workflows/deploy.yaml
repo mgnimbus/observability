@@ -14,28 +14,27 @@ env:
   AWS_REGION: ap-south-2
   TF_VERSION: 1.12.2
 
-# Serialize all Terraform runs (deploy + destroy share this group) so two runs never
-# touch the same S3 state at once. Never cancel a run mid-apply — a SIGKILL'd apply is
-# what leaves orphaned .tflock objects behind.
 concurrency:
   group: terraform-${{ github.repository }}
   cancel-in-progress: false
 
 jobs:
-  # Deploy EKS and backend first
+  # 1. Primary Infrastructure + CRDs (Enforced Sequential Order)
   primary-infrastructure:
     name: "Deploy Primary Infrastructure"
     runs-on: ubuntu-latest
     strategy:
-      fail-fast: false # one failed leg must not cancel siblings mid-apply (orphans locks)
+      fail-fast: false # one failed leg must not cancel siblings mid-apply
       matrix:
-        component: [eks, backend]
+        component: [eks, crd, backend]
         include:
           - component: eks
             directory: ./_1_eks
+          - component: crd
+            directory: ./_1.3_crd
           - component: backend
             directory: ./_3_s3_backend
-      max-parallel: 2
+      max-parallel: 1 # Enforces sequential execution: eks -> crd -> backend
     steps:
       - name: Checkout code
         uses: actions/checkout@v6.0.3
@@ -54,52 +53,28 @@ jobs:
         with:
           terraform_version: ${{ env.TF_VERSION }}
 
+      # Generated kubeconfig needed specifically for the CRD step to touch the cluster
+      - name: Update kubeconfig (if CRD)
+        if: matrix.component == 'crd'
+        run: |
+          cd _1_eks && terraform init
+          aws eks update-kubeconfig --region ${{ env.AWS_REGION }} --name "$(terraform output -raw cluster_name)"
+
       - name: Deploy ${{ matrix.component }}
         working-directory: ${{ matrix.directory }}
         run: |
           echo "🚀 Deploying ${{ matrix.component }}"
-
           terraform init
           terraform plan -lock-timeout=5m -out=tfplan
           terraform apply -lock-timeout=5m -auto-approve tfplan
 
-  crds:
-    name: "CRDs"
-    needs: primary-infrastructure
-    if: github.event.inputs.deploy_monitoring == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6.0.3
-        with:
-          ref: ${{ github.ref }}
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v6.2.0
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ env.AWS_REGION }}
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v4.0.1
-        with:
-          terraform_version: ${{ env.TF_VERSION }}
-      - name: Update kubeconfig
-        run: |
-          cd _1_eks && terraform init
-          aws eks update-kubeconfig --region ${{ env.AWS_REGION }} --name "$(terraform output -raw cluster_name)"
-      - name: Deploy CRDs
-        working-directory: ./_1.3_crd
-        run: |
-          terraform init
-          terraform plan -lock-timeout=5m -out=tfplan
-          terraform apply -lock-timeout=5m -auto-approve tfplan
-
-  # Deploy secondary infrastructure (load balancer + cert)
+  # 2. Secondary Infrastructure (Runs cleanly right after Primary + CRDs are complete)
   secondary-infrastructure:
     name: "Deploy Secondary Infrastructure"
-    needs: crds
+    needs: primary-infrastructure
     runs-on: ubuntu-latest
     strategy:
-      fail-fast: false # one failed leg must not cancel siblings mid-apply (orphans locks)
+      fail-fast: false
       matrix:
         component: [loadbalancer, cert]
         include:
@@ -141,7 +116,6 @@ jobs:
         working-directory: ${{ matrix.directory }}
         run: |
           echo "🚀 Deploying ${{ matrix.component }}"
-
           terraform init
           terraform plan -lock-timeout=5m -out=tfplan
           terraform apply -lock-timeout=5m -auto-approve tfplan
@@ -221,7 +195,7 @@ jobs:
           terraform plan -lock-timeout=5m -out=tfplan
           terraform apply -lock-timeout=5m -auto-approve tfplan
 
-  # Stage 3 — OpenTelemetry: operator first, then collector (collector needs the operator's CRDs)
+  # Stage 3 — OpenTelemetry: operator first, then collector
   monitoring-otel:
     name: "Monitoring · 3 · OpenTelemetry"
     needs: monitoring-backends
@@ -260,7 +234,7 @@ jobs:
           terraform plan -lock-timeout=5m -out=tfplan
           terraform apply -lock-timeout=5m -auto-approve tfplan
 
-  # Stage 4 — Grafana (datasources point at the stage-2 backends)
+  # Stage 4 — Grafana
   monitoring-grafana:
     name: "Monitoring · 4 · Grafana"
     needs: monitoring-otel
@@ -287,14 +261,13 @@ jobs:
       - name: Deploy grafana
         working-directory: ./_2_grafana
         env:
-          # admin password is no longer hardcoded — create the GRAFANA_ADMIN_PASSWORD repo secret
           TF_VAR_grafana_admin_password: ${{ secrets.GRAFANA_ADMIN_PASSWORD }}
         run: |
           terraform init
           terraform plan -lock-timeout=5m -out=tfplan
           terraform apply -lock-timeout=5m -auto-approve tfplan
 
-  # Stage 5 — meta-monitoring (watches the whole stack; depends on everything above)
+  # Stage 5 — meta-monitoring
   monitoring-meta:
     name: "Monitoring · 5 · meta-monitoring"
     needs: monitoring-grafana
@@ -331,7 +304,6 @@ jobs:
     needs:
       - primary-infrastructure
       - secondary-infrastructure
-      - monitoring-crd
       - monitoring-nginx
       - monitoring-backends
       - monitoring-otel
@@ -345,9 +317,8 @@ jobs:
           echo "## Deployment Summary" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Include Monitoring**: ${{ github.event.inputs.deploy_monitoring }}" >> $GITHUB_STEP_SUMMARY
-          echo "**Primary Infrastructure (EKS + Backend)**: ${{ needs.primary-infrastructure.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Primary Infrastructure (EKS + CRD + Backend)**: ${{ needs.primary-infrastructure.result }}" >> $GITHUB_STEP_SUMMARY
           echo "**Secondary Infrastructure (LB + Cert)**: ${{ needs.secondary-infrastructure.result }}" >> $GITHUB_STEP_SUMMARY
-          echo "**Monitoring · 0 CRDs**: ${{ needs.monitoring-crd.result }}" >> $GITHUB_STEP_SUMMARY
           echo "**Monitoring · 1 nginx**: ${{ needs.monitoring-nginx.result }}" >> $GITHUB_STEP_SUMMARY
           echo "**Monitoring · 2 backends**: ${{ needs.monitoring-backends.result }}" >> $GITHUB_STEP_SUMMARY
           echo "**Monitoring · 3 otel**: ${{ needs.monitoring-otel.result }}" >> $GITHUB_STEP_SUMMARY
