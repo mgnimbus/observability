@@ -266,8 +266,9 @@ scrape `:8080`), and Mimir instruments its HTTP with its *own* middleware
   (`id="/"` with empty `pod/container` = the node **root-cgroup** rollup; real containers carry
   `pod=…,container=…,namespace=…`.)
 - **Gotcha:** on EKS the kubelet/cAdvisor is reachable only because the **managed apiserver** can
-  proxy to it — you never scrape the node directly. (Contrast `kubernetes-apiservers`, which is
-  `up=0` for a *different* reason: missing `nonResourceURLs:/metrics` RBAC.)
+  proxy to it — you never scrape the node directly. (Contrast `kubernetes-apiservers`, which was
+  `up=0` for a *different* reason: missing `nonResourceURLs:/metrics` RBAC — fixed during T6,
+  both targets `up=1` since.)
 
 > Cross-cutting reminder (see the *promhttp gotcha* above): a metric **NAME never identifies a
 > source** — `promhttp_metric_handler_requests_total` spans **4 different exporters**
@@ -313,8 +314,8 @@ flowchart LR
 **`up` = "did the scrape succeed" (connect + 2xx + parseable body), NOT "is the app healthy."**
 
 - **`up=0` causes** (distinct mechanisms): TCP refused / nothing on the port · timeout (slower than
-  `scrape_timeout`, 10 s here) · HTTP non-2xx (401/403 — your apiservers; **a `500` on `/metrics`
-  is `up=0` too**) · DNS failure · TLS handshake failure · unparseable body.
+  `scrape_timeout`, 10 s here) · HTTP non-2xx (401/403 — your apiservers pre-RBAC-fix; **a `500`
+  on `/metrics` is `up=0` too**) · DNS failure · TLS handshake failure · unparseable body.
 - **`up=1` but the app is broken:** the *application* is failing its real job (DB down, erroring
   users) while its `/metrics` page still returns 200 parseable text. `up` cannot see app health —
   only scrape success. (Alert on real SLO metrics for that, not `up`.)

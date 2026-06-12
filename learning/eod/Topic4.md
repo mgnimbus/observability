@@ -6,6 +6,17 @@
 > binary** — its four internal jobs are split across the Target Allocator, the OTel
 > Collector, and Mimir. Learn the canonical server first, then the mapping.
 
+> **⚠️ Corrections since first written (repo state verified 2026-06-12):**
+> 1. The 2 `kubernetes-apiservers` targets at `up==0` were **not** an "EKS managed quirk" —
+>    root cause was **missing RBAC** (`nonResourceURLs: ["/metrics"]` on the scraper's
+>    ClusterRole, now `clusterrole.yaml:66`). Fixed during the T6 session; both `up==1` since.
+> 2. The `prometheus-pushgateway` job was **deleted from `meta_ta.yaml` as dead config** during
+>    T5 (no gateway deployed, nothing pushes to it). The `honor_labels: true` discussion below
+>    is kept for the concept.
+> 3. The annotation-discovery jobs (`kubernetes-pods`, `kubernetes-service-endpoints`) were
+>    **retired during T6** in favor of ServiceMonitors; the daemonset TA now scrapes only
+>    kubelet + cAdvisor. Tables below are the 2026-06-07 snapshot.
+
 ---
 
 ## WHY Prometheus exists (the problem it killed)
@@ -54,8 +65,9 @@ flowchart LR
 
 The **pull** principle: Prometheus reaches *out*. Targets are dumb — they expose `/metrics`
 and don't know who scrapes them. The one exception: short-lived **batch jobs push to a
-Pushgateway**, which Prometheus then scrapes (this is why your `meta_ta` has a
-`prometheus-pushgateway` job with `honor_labels: true` — see the label section). Every scrape
+Pushgateway**, which Prometheus then scrapes (this is why your `meta_ta` *had* a
+`prometheus-pushgateway` job with `honor_labels: true` — deleted as dead config in T5; see the
+label section). Every scrape
 also synthesizes **`up{}`** = 1 on success, 0 on failure — your first triage signal.
 
 ---
@@ -228,9 +240,10 @@ It carries the target's **post-relabel identity** (`job`, `instance`, + your pip
 instance="10.0.52.135:443"} == 0` names the exact dead target.
 
 **Live on meda-dev-koi:** `count(up == 1)` = **51**, and **2** targets `up == 0` — both
-`job="kubernetes-apiservers"` (the EKS managed control-plane endpoints, a common benign
-quirk). Reconciliation: **41 (consistent-hashing TA) + 12 (per-node TA) = 53 = 51 up + 2 down.**
-The whole topology closes.
+`job="kubernetes-apiservers"`. Called "a benign EKS quirk" at the time — **wrong**: T6
+root-caused it to missing `nonResourceURLs: ["/metrics"]` RBAC on the scraper's ClusterRole
+(401/403 → `up=0`); fixed, both `up==1` since. Reconciliation: **41 (consistent-hashing TA) +
+12 (per-node TA) = 53 = 51 up + 2 down.** The whole topology closes.
 
 Siblings born at the same rung (use when `up==1` but data still looks wrong):
 
@@ -295,8 +308,9 @@ When the scraper attaches target labels and the **exposition already has a colli
   Then `meta_metrics` *recovers* it with relabel: `exported_pod→pod`, `exported_node→node`,
   `exported_namespace→namespace` — surgically restoring KSM's real identity while keeping the
   scrape's `job`.
-- `honor_labels: true` → the **exposed** label **wins** outright. This is set on exactly one job,
-  `prometheus-pushgateway` in `meta_ta` (and nowhere in `meta_metrics`), because pushgateway
+- `honor_labels: true` → the **exposed** label **wins** outright. This was set on exactly one
+  job, `prometheus-pushgateway` in `meta_ta` (and nowhere in `meta_metrics`; job since deleted
+  as dead config — T5), because pushgateway
   re-exposes metrics other jobs *pushed*, still carrying their **original** `job`/`instance`,
   and you must preserve those, not overwrite them with `job="prometheus-pushgateway"`.
 
@@ -310,7 +324,8 @@ handling runs in both collectors).
 ## Common failure modes (interview-grade)
 
 - **Job missing from `/jobs`** → relabel `keep`/SM selector dropped every candidate (SD bug).
-- **`up==0`** → discovered but scrape fails: TLS/auth (apiserver), wrong port/path, NetworkPolicy.
+- **`up==0`** → discovered but scrape fails: TLS/auth/RBAC (401/403 — our apiserver case),
+  wrong port/path, NetworkPolicy.
 - **Double-scrape** → the same endpoint matched by ≥2 discovery paths (pod-annotation +
   service-annotation + ServiceMonitor). Detect with `count by(job)(<metric>) > 1`; fix by one
   discovery path per target (`OPTIMIZATION.md` P1).
@@ -344,7 +359,8 @@ handling runs in both collectors).
 - **`up`** is synthetic, made by the scraper, one per target/scrape; live 51 up / 2 down (apiservers).
 - Troubleshoot in order: **in `/jobs`? → `up==1`? → pushed? → Mimir accepted?**
 - **`exported_*`** = honor_labels=false collision recovery (KSM); **`honor_labels: true`** = pushgateway-only.
-- Live anchors: 41 + 12 = 53 targets; ~209k active series; apiserver `up==0` (EKS managed quirk).
+- Live anchors: 41 + 12 = 53 targets; ~209k active series; apiserver `up==0` was **missing
+  `nonResourceURLs: ["/metrics"]` RBAC** (401/403) — *not* an EKS quirk; fixed in T6.
 
 ## Quiz result
 PASS (2026-06-07). Q3 clean (ephemeral / no-HA / no-multi-tenancy + `remote_write`). Q1 shown

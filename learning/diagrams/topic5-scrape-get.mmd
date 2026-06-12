@@ -1,0 +1,6 @@
+%% One pull — scraper opens TCP, GETs /metrics, stamps + labels the samples (Topic 5)
+%% Render: GitHub/VSCode mermaid preview, or mermaid.live
+flowchart LR
+  S["SCRAPER (OTel collector obsrv-ta)"] -->|"1. open TCP + GET /metrics"| T["TARGET node-exporter :9100 (dumb page)"]
+  T -->|"2. text exposition (all current values)"| S
+  S -->|"3. timestamp (scraper clock) + attach job/instance"| ING["samples into the pipeline"]

@@ -62,6 +62,10 @@ in to **diagnose** *why*. **Cheap finds it, expensive explains it.**
   instruments + samples + emits it.
 - The full journey those signals travel (your "one diagram"): emitter → **OTel Collector** →
   transport → **Mimir/Loki/Tempo** → **S3** → query → **Grafana**. Every topic reconnects to it.
+- The bill, made concrete (numbers proven live at T3/T4): this cluster pushes **~2,034
+  samples/s** into Mimir and holds **~209k active series** in ingester memory — every one of
+  them a deliberate instrument→sample→emit decision. That is what "telemetry is designed in,
+  not free" looks like running.
 
 ## HOW it scales / trade-offs
 - **Richer telemetry = more insight *and* more cost.** Cadence (sample interval) and label
@@ -88,6 +92,7 @@ in to **diagnose** *why*. **Cheap finds it, expensive explains it.**
 - Monitoring/observability are done *with* telemetry; they aren't telemetry.
 - Three signals split by economics: **metrics detect (cheap), logs/traces diagnose (expensive).**
 - Telemetry is **designed in, not free** — every signal is a cardinality bill.
+- Live anchors: **~2,034 samples/s ingest · ~209k active series** — the cluster's running bill.
 
 ## Quiz result
 PASS (2026-06-06). Boundary (state≠telemetry) + detect-vs-diagnose solid. Gaps carried forward:

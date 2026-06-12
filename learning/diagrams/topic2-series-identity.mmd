@@ -1,0 +1,10 @@
+%% Series identity — one metric name fans out into series per unique label set (Topic 2)
+%% Render: GitHub/VSCode mermaid preview, or mermaid.live
+flowchart LR
+  M["metric name:<br/>http_requests_total"]
+  M --> A["series A<br/>{method=GET, code=200}"]
+  M --> B["series B<br/>{method=POST, code=200}"]
+  M --> C["series C<br/>{method=GET, code=500}"]
+  A --> AS["(t0,v0)(t1,v1)(t2,v2) ... samples"]
+  B --> BS["(t0,v0)(t1,v1)(t2,v2) ..."]
+  C --> CS["(t0,v0)(t1,v1)(t2,v2) ..."]

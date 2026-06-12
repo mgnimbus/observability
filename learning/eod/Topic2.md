@@ -48,6 +48,9 @@ flowchart LR
 - `http_requests_total{method="GET"}` and `{method="POST"}` = **same metric, two series.**
 - Change *any* label value → a **brand-new series**, stored separately, **forever** (until
   retention drops it).
+- Mechanically (proven at T6): the scraper computes a **fingerprint = hash(`__name__` + the
+  full label set)** for every scraped sample; same fingerprint → append to the same series,
+  different fingerprint → new series. Identity *is* that hash — value/timestamp never enter it.
 
 ## Cardinality — why this is *the* cost driver
 **Cardinality = number of unique series** (name × every label combination). It is the #1 cost and
@@ -61,6 +64,15 @@ node_cpu_seconds_total ≈ nodes × cores × modes × (distinct pod identities o
 ```
 
 **One unbounded label = unbounded series = ingester OOM + ever-growing S3 bill.**
+
+**"Active series" — the precise definition** (flagged soft in the T1–T4 re-quiz; drill it):
+an **active** series is one that received a sample **within the staleness window (~5 min)** —
+it's what the ingester must hold in head-block memory (`cortex_ingester_memory_series`; live
+~209k cluster-wide). A churned pod's old series stops being *active* once samples stop, but its
+history persists in blocks/S3 until retention. Two cost axes: **active series = memory/ingest
+pressure now; total series ever created = index + storage.** Corollary (T2/T4 re-quiz gotcha):
+raising `scrape_interval` cuts **samples/sec**, *never* active-series count — the cardinality
+lever is `metric_relabel_configs` keep/drop.
 
 ## Grounded in your stack — a real series we pulled live
 You fetched `node_cpu_seconds_total{...}` from the cluster (far better than a textbook example).
@@ -97,6 +109,8 @@ Reading its labels:
 - **sample = (timestamp, value)**; **series = samples sharing one label-set identity.**
 - **Series identity = the full label set** (incl `__name__`); change a label → new series.
 - **Cardinality = unique series count = #1 cost/OOM driver.** One unbounded label = outage.
+- **Active series** = received a sample within the staleness window (~5 min) = ingester head
+  memory (live ~209k). `scrape_interval` cuts samples/sec, **not** active series.
 - "What is a metric" is really **"what is a series."**
 - Tenant goes in the **`X-Scope-OrgID` header**, never as a metric label.
 

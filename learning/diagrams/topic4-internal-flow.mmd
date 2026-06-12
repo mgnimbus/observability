@@ -1,0 +1,10 @@
+%% Canonical Prometheus server — the four jobs + satellites, internal flow (Topic 4)
+%% Render: GitHub/VSCode mermaid preview, or mermaid.live
+flowchart LR
+    SD["SD: find targets"] --> RET["Retrieval: scrape /metrics + relabel"]
+    RET --> TSDB["TSDB: WAL -> head -> blocks"]
+    TSDB --> PROMQL["PromQL engine"]
+    PROMQL --> UI["HTTP API / Grafana"]
+    PROMQL --> RULES["rules manager"]
+    RULES --> AM["Alertmanager"]
+    RULES --> TSDB
