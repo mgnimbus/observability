@@ -186,9 +186,31 @@ does) → a *different* series. Value+timestamp are the **sample**, never identi
   from the Service).
 
 ## Quiz result
-**PARKED (2026-06-07)** — status 🟡. Taught consolidated (folds deep-dive P4/P5/P6) and the quiz was
-posed, but the learner pivoted to the kube-dns/apiserver ops fixes before answering. **Resume by
-taking these 5:**
+**PASS (2026-06-13)** — posed 2026-06-07, parked when the learner pivoted to the
+kube-dns/apiserver ops fixes; taken to completion on 2026-06-13.
+
+**The gap it exposed and closed — the two-stage relabel conflation.** The learner initially
+named **Stage 1 (`relabel_configs`) for BOTH Q2 and Q5**. Q5 (a job vanishing from `/jobs`) *is*
+Stage 1 — a `keep` matching zero candidates. But Q2 (cutting **active series**) is **Stage 2
+(`metric_relabel_configs`)**. Locked after the correction:
+- **Stage 1 `relabel_configs`** — target-level, pre-scrape: *which targets, where to dial, what
+  to name them.* A `keep` matching zero here = job absent from `/jobs`.
+- **Stage 2 `metric_relabel_configs`** — per-sample, post-scrape: *which series to keep/drop
+  before storage* = the **cardinality / active-series lever** (drop a noisy `__name__`, or strip
+  a high-cardinality label so many series collapse into fewer). `scrape_interval` is **not** the
+  lever (it cuts samples/sec).
+
+Other answers: Q1 clean after one nudge — role `endpoints` enumerates **all ~306 cluster-wide
+endpoints**, `keep` regex `default;kubernetes;https` maps positionally to
+`__meta_kubernetes_namespace=default` ; `__meta_kubernetes_service_name=kubernetes` ;
+`__meta_kubernetes_endpoint_port_name=https` (joined in source-label order). Initial slip: read
+the 306 as "the apiserver's endpoints" — it's *every* Service's endpoints, the `keep` narrows to
+2. Q3 (a) corrected — a relabel **set `instance` to the node name**, overriding the
+`instance=__address__` default (else all 3 nodes would read `kubernetes.default.svc:443`); (b)
+`__meta_kubernetes_*` are dropped before ingestion unless copied into a real label. Q4 clean —
+new series; identity = fingerprint(`__name__` + full label set), add a label → new hash.
+
+**The 5 questions (for re-revision):**
 1. apiserver job discovers 306, keeps 2 — name the SD **role**, what the 306 are, and the `keep`
    rule (which 3 `__meta_` labels, against what value).
 2. `scrape_interval: 120s` to "halve active series" — right/wrong? correct lever + which relabel

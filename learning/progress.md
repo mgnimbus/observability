@@ -6,7 +6,7 @@ not advance until the current topic is mastered.
 
 Legend: ⬜ not started · 🟡 in progress · ✅ mastered (quiz passed) · 🔁 needs review
 
-**Current focus:** Phase 1 · sequential, **each topic taught at deep-dive depth inline** (user decision 2026-06-07) — the separate 10-part deep-dive is retired as a standalone track; its parts fold into the matching sequential topic. T6 Scraping taught consolidated (P4–P6 folded in); quiz parked.
+**Current focus:** Phase 1 · sequential, **each topic taught at deep-dive depth inline** (user decision 2026-06-07) — the separate 10-part deep-dive is retired as a standalone track; its parts fold into the matching sequential topic. T6 Scraping **mastered 2026-06-13** (parked quiz completed).
 **Next up:** T7 — *Exporters* (deep); then T8 — *node-exporter* (deep, = old P2).
 
 ---
@@ -37,7 +37,7 @@ scrape→WAL→Mimir→S3→Grafana (T28).
 | 3 | Metric types | ✅ | pass | — | mastered 2026-06-07 (re-ask): sum-by-le merges same-`le` bucket rates across sources; summary quantiles can't be merged. counter/gauge/histogram solid; grounded on live cortex histogram. see eod/Topic3.md |
 | 4 | Prometheus architecture | ✅ | pass | — | mastered 2026-06-07 (live TA hands-on): 4 jobs = TA(SD)+OTel receiver(retrieval)+Mimir(TSDB/PromQL/ruler/AM); SD funnel discover→relabel→assign; per-node vs consistent-hashing; up==0 troubleshoot ladder; exported_*/honor_labels. see eod/Topic4.md |
 | 5 | Pull model | ✅ | pass | — | mastered 2026-06-07 (4 live /metrics archetypes — node-exporter/KSM/Mimir/cAdvisor): pull = scraper initiates GET; collector = pull→push pivot, TA never scrapes; up = scrape-success ≠ app-health (500→up=0); counter location (kernel survives pod restart vs in-process resets that rate() heals); ephemeral→Pushgateway (stale value + breaks up); unreachable→push. see eod/Topic5.md |
-| 6 | Scraping | 🟡 | – | P4·P5·P6 | taught consolidated 2026-06-07 (P4–P6 folded): SD roles; discover→relabel→assign (apiservers 306→2 via `keep`); two relabel stages (relabel_configs target-level vs metric_relabel_configs = cardinality lever); `__` label lifecycle + instance defaults to `__address__`; scrape→fingerprint→series. Quiz parked (5 Qs in the doc); see eod/Topic6.md |
+| 6 | Scraping | ✅ | pass | P4·P5·P6 | mastered 2026-06-13 (parked quiz completed): SD roles; discover→relabel→assign (apiservers 306→2 via `keep`); two relabel stages (relabel_configs target-level vs metric_relabel_configs = cardinality lever); `__` label lifecycle + instance defaults to `__address__`; scrape→fingerprint→series. Quiz gap = two-stage relabel conflation (Stage 1 used for both Q2+Q5), corrected. see eod/Topic6.md |
 | 7 | Exporters | ⬜ | – | — | |
 | 8 | node-exporter | ⬜ | – | P2 | |
 | 9 | kube-state-metrics | 🟡 | – | **P1** ← current | active deep-dive part |
@@ -102,6 +102,14 @@ scrape→WAL→Mimir→S3→Grafana (T28).
 - 2026-06-07: T5 — first chose "pull" for a target you can't reach inbound. Reality: pull needs the
   scraper to open a connection *to* the target; no inbound path → **push** (target sends outbound to
   your collector). cAdvisor is the proxy escape hatch (apiserver reaches the kubelet).
+- 2026-06-13: T6 — **conflated the two relabel stages**: named Stage 1 (`relabel_configs`) for both
+  "what makes a job vanish from `/jobs`" (correct — `keep` matches 0 targets) *and* "what cuts active
+  series" (wrong — that's Stage 2 `metric_relabel_configs`, per-sample/post-scrape, the cardinality
+  lever). Fix: **Stage 1 = which TARGETS** (target-level, pre-scrape); **Stage 2 = which SERIES**
+  (per-sample, post-scrape). Also first read the apiserver job's 306 discovered as "the apiserver's
+  endpoints" — it's *every* Service's endpoints cluster-wide; the `keep` narrows to 2. And Q3a: a
+  relabel **sets `instance` to the node name**, overriding the `instance=__address__` default — not
+  the other way round. Recovered all on retry.
 
 ## Quiz score history
 _(Claude appends: date · topic · result · the gap it revealed)_
@@ -117,3 +125,10 @@ _(Claude appends: date · topic · result · the gap it revealed)_
   "pull" for an unreachable target → corrected to push). Grounded live on 4 /metrics archetypes —
   node-exporter 1673 series (scrape 1673 samples/29ms), KSM 6141, Mimir ingester 1300
   (cortex_ingester_memory_series=64093), cAdvisor 5550 via apiserver proxy. see eod/Topic5.md.
+- 2026-06-13 · T6 Scraping · PASS · (parked 2026-06-07, completed today). Clean cold: Q4 series
+  identity = fingerprint(`__name__`+labels) → add label = new series; Q3b `__meta_*` dropped unless
+  copied; Q5 stage = Stage-1 `keep` matched 0 → job absent from `/jobs`. **Corrected on retry:** the
+  two-stage relabel conflation (named Stage 1 for both Q2 active-series-lever and Q5 — Q2 is Stage 2
+  `metric_relabel_configs`); the 306 = all cluster endpoints not just the apiserver's; Q3a the
+  relabel *sets* `instance`=node-name overriding the `=__address__` default. Q1 keep mapping nailed:
+  `namespace=default ; service_name=kubernetes ; endpoint_port_name=https`. see eod/Topic6.md.
