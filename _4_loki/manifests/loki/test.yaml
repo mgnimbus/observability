@@ -42,24 +42,16 @@ loki:
       active_index_directory: /var/loki/index
       cache_location: /var/loki/cache
 
-  monitoring:
-    dashboards:
-      enabled: true
-    rules:
-      enabled: true
-    serviceMonitor:
-      enabled: true
-      interval: 60s
-    selfMonitoring:
-      enabled: true
-      tenant:
-        name: "obsrv"
-
   structuredConfig:
     auth_enabled: true
     server:
       log_level: warn
     ingester:
+      lifecycler:
+        ring:
+          kvstore:
+            store: memberlist
+          replication_factor: 1
       chunk_encoding: snappy
     querier:
       max_concurrent: 4
@@ -179,6 +171,7 @@ ingester:
         size: 10Gi
         storageClass: obsrv-sc
         enableStatefulSetAutoDeletePVC: true
+    whenDeleted: Delete
   resources:
     limits:
       cpu: 50m
@@ -300,3 +293,19 @@ test:
   enabled: false
 lokiCanary:
   enabled: false
+
+monitoring:
+  serviceMonitor:
+    enabled: true
+    clusterLabel: ""
+    namespaceSelector: {}
+    annotations: {}
+    labels: {}
+    interval: 15s
+    scrapeTimeout: null
+    relabelings: []
+    metricRelabelings: []
+    scheme: http
+    tlsConfig: null
+    # -- The job label is required for the included dashboards to work.
+    jobPrefix: '{{ include "loki.namespace" $ }}/'

@@ -197,10 +197,34 @@ jobs:
 
           terraform destroy -lock-timeout=5m -auto-approve || echo "⚠️ Component may already be destroyed"
 
+  # Reclaim EBS volumes orphaned by the teardown. StatefulSet PVCs (loki/mimir)
+  # aren't deleted before the cluster goes away, so their CSI volumes are left
+  # `available` and bill 24/7. Runs even on failure (orphans are more likely
+  # when a destroy leg fails). The script skips volumes owned by any still-live
+  # cluster, so it is safe even if a destroy leg left the cluster partly up.
+  cleanup-ebs:
+    name: "Cleanup Orphaned EBS Volumes"
+    needs: destroy-core
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6.0.3
+
+      - name: Configure AWS
+        uses: aws-actions/configure-aws-credentials@v6.2.0
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Delete orphaned CSI volumes
+        run: bash .github/scripts/cleanup-orphaned-ebs.sh
+
   # Summary
   summary:
     name: "Destruction Summary"
-    needs: [destroy-monitoring, destroy-secondary, destroy-core]
+    needs: [destroy-monitoring, destroy-secondary, destroy-core, cleanup-ebs]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -210,5 +234,6 @@ jobs:
           echo "**Monitoring Stack**: ${{ needs.destroy-monitoring.result }}" >> $GITHUB_STEP_SUMMARY
           echo "**Secondary Infrastructure**: ${{ needs.destroy-secondary.result }}" >> $GITHUB_STEP_SUMMARY
           echo "**Core Infrastructure (EKS + Backend)**: ${{ needs.destroy-core.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Orphaned EBS Cleanup**: ${{ needs.cleanup-ebs.result }}" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "⚠️ Infrastructure destroyed by @${{ github.actor }}" >> $GITHUB_STEP_SUMMARY

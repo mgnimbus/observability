@@ -162,7 +162,7 @@ jobs:
         include:
           - { component: loki, directory: ./_4_loki }
           - { component: mimir, directory: ./_5_mimir }
-          - { component: tempo, directory: ./_6_tempo }
+          # - { component: tempo, directory: ./_6_tempo }
     steps:
       - uses: actions/checkout@v6.0.3
         with:

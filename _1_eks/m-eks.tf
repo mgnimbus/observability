@@ -53,11 +53,11 @@ module "eks" {
       ami_type       = "BOTTLEROCKET_ARM_64"
       instance_types = ["t4g.large", "m6g.large", "m7g.large", "m8g.large", "m6gd.large"]
       capacity_type  = "SPOT"
-      subnet_ids     = module.vpc.private_subnets
+      subnet_ids     = [module.vpc.private_subnets[0]]
 
       min_size     = 2
-      desired_size = 2
       max_size     = 3
+      desired_size = 2
 
       #     bootstrap_extra_args = <<-EOT
       #       # The admin host container provides SSH access and runs with "superpowers".
