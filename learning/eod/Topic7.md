@@ -2,8 +2,11 @@
 
 > Companion to `Topic4.md`/`Topic5.md`. Verbose by design — a self-contained lesson for cold
 > revision in the `Topic4.md` gold-standard shape.
-> **STATUS: in progress (2026-06-13)** — taught cold (learner said "vague idea, not concrete");
-> quiz posed but **not yet taken**. Resume by answering the 4 questions at the bottom.
+> **STATUS: MASTERED 2026-06-13** — taught cold (learner said "vague idea, not concrete"), then
+> **all quiz questions passed on own after correction**. Gaps that surfaced & closed: conflated KSM
+> *sharding (scale)* with *replication-for-HA* (×3 before it stuck); named `scrape_duration_seconds`
+> before correcting to `pg_up`. The **KSM + sharding deep-dive** below was added post-quiz — it was a
+> real teaching gap the learner caught ("you quizzed me on sharding without teaching it").
 > The one idea to anchor everything: **an exporter is a *translator* — a separate process that
 > stands in front of something which can't speak Prometheus, reads its *native* interface, and
 > re-publishes it as `/metrics`.** Everything else falls out of "translator for a subject that
@@ -156,6 +159,108 @@ the answer.*
 
 ---
 
+## Deep dive — kube-state-metrics: the cluster-global exporter & how to scale it
+> Added 2026-06-13 (post-quiz). KSM is THE worked example of a *cluster-global* exporter, and its
+> scaling is the place everyone gets it wrong. The crux to anchor: **sharding solves SCALE;
+> replication does not solve HA — because KSM is stateless there is nothing to make "highly
+> available."**
+
+### What KSM actually is (its role)
+KSM **watches the Kubernetes API server** and converts the *current state of API objects* into
+metrics. Deployments, Pods, Nodes, DaemonSets, PVCs, Jobs, etc. → series like
+`kube_deployment_status_replicas`, `kube_pod_status_phase`, `kube_node_status_condition`,
+`kube_pod_container_resource_requests`. In **your** cluster that's the ~**6141 series** KSM exposes —
+the single biggest `/metrics` page in the stack.
+
+Three things KSM is **NOT**, each a common confusion:
+- It does **not** scrape your pods or read `/proc` — that's node-exporter (host/kernel). KSM does
+  *object state*, not host resource usage.
+- It does **not** compute or invent anything — it's a **1:1 projection** of what the API server
+  already knows. Every `kube_*` series is just a restatement of an object's `spec`/`status`.
+- It does **not persist** anything. On startup it does a `LIST` then `WATCH` against the API, builds
+  an **in-memory cache** of object state, and renders `/metrics` off that cache on each scrape. The
+  **source of truth is the API server → etcd**, never KSM.
+- **KSM ≠ metrics-server.** metrics-server serves *resource usage* (CPU/mem) for `kubectl top`/HPA;
+  KSM serves *object state* (counts, conditions, spec-vs-status). Different subjects entirely.
+
+So KSM is a **stateless mirror of cluster object state** — and *that one property* drives both the
+HA answer and the scaling answer below.
+
+### Stateless ⇒ the HA answer (why "3 replicas for HA" is wrong twice)
+A team that runs KSM as a **3-replica Deployment "for HA"** has broken two distinct things:
+
+1. **Duplication / data corruption.** All three replicas watch the *same* API and emit the *same*
+   series. To Mimir that's the identical series arriving from 3 instances → **3× the series**, and
+   **out-of-order / over-counted samples** (sum/count over the metric triples). The subject is
+   *shared*, not partitioned — so replication just photocopies it.
+2. **Zero availability gained.** KSM persists **nothing**; a pod restart rebuilds the watch cache
+   from the API server in **seconds** (LIST→WATCH), costing only a **sub-scrape-interval gap** that
+   self-heals. There is literally nothing durable to protect → replicas buy **0** availability.
+   *"For HA" is the wrong reason entirely.*
+
+**What they should have done:** for a *survive-a-restart* goal, run **one replica** (it self-heals)
+and, if you want to be told about the brief gap, **alert on `up{job="kube-state-metrics"}==0`**.
+Run multiple pods *only* if you've outgrown one (next section) — and then via **sharding**, not
+replication.
+
+### When one pod isn't enough ⇒ sharding (a SCALE tool, not HA)
+**WHY sharding exists.** KSM's natural topology is one pod that sees everything. That holds until
+scale breaks it: on a huge cluster (tens of thousands of objects) a single KSM pod must hold the
+**whole watch cache in memory** (→ **OOM**) and render the **whole `/metrics` payload** on every
+scrape (→ **scrape timeout**). You've hit the ceiling of one process.
+
+**The trap.** "Just add pods" → plain replicas → the duplication above. Replication is wrong because
+the subject is shared, not partitioned.
+
+**WHAT sharding does.** Split the **object set** across N pods so each owns a *disjoint slice* —
+union = full coverage, overlap = zero.
+
+**HOW it works (mechanics):**
+- Flags: `--total-shards=N` and `--shard=i` (with `i ∈ 0..N-1`).
+- Each pod **hashes every object by its UID** and **only emits metrics for objects where
+  `hash(uid) mod N == i`**. Shard 0 owns ~half, shard 1 the other half (N=2). No object rendered
+  twice; the union is the full cluster.
+- Run it as a **StatefulSet** so each pod gets a stable ordinal → KSM's *automated sharding* derives
+  `--shard` from the pod ordinal (no manual per-pod wiring).
+- **CRITICAL:** your scrape layer must discover and scrape **every shard**. In your stack that's the
+  **target allocator** (`obsrv-ta-metrics-stateful`) — it must hold a target per shard pod. Scrape
+  only some shards and you **silently lose** the objects owned by the missing shards.
+
+```mermaid
+flowchart TB
+  subgraph BAD["❌ 3 replicas 'for HA' — REPLICATION"]
+    A1["KSM r1<br/>watches ALL objects"] --> M1["Mimir"]
+    A2["KSM r2<br/>watches ALL objects"] --> M1
+    A3["KSM r3<br/>watches ALL objects"] --> M1
+    M1 --> X["same series ×3<br/>→ out-of-order / over-count<br/>availability gained = 0 (stateless)"]
+  end
+  subgraph GOOD["✅ N shards — SHARDING (partition by hash(uid) mod N)"]
+    B0["shard 0<br/>objects where mod==0"] --> M2["Mimir"]
+    B1["shard 1<br/>objects where mod==1"] --> M2
+    M2 --> Y["disjoint slices<br/>union = full cluster, zero overlap<br/>scales by object count"]
+  end
+```
+
+**HA vs scale, said once more (the bit you kept tripping on):**
+- **Sharding = scale, not HA.** If a shard dies, *its* 1/N slice goes blind until it restarts. What
+  sharding *does* improve is **blast radius**: a single-replica restart blanks the *whole* cluster's
+  `kube_*`; a sharded restart blanks only **1/N**.
+- **HA/restart = nothing to do** beyond running the pod(s): KSM is stateless and self-heals from the
+  API server. One replica per shard is the norm; the brief gap is acceptable because the data is
+  reconstructed from etcd, not from KSM.
+
+**Common KSM mistakes:**
+- N plain replicas "for HA" → N× duplicate series (the canonical mistake).
+- Sharded, but the scrape/SD layer only covers some shards → a fraction of `kube_*` silently missing.
+- Confusing KSM (object state) with metrics-server (resource usage).
+- Forgetting KSM's **cluster-wide read RBAC** is a fat token and an attack target — scope it, never
+  grant write.
+
+**Your stack:** KSM = ~**6141 series**, **single replica, no sharding** — correct for this size.
+Sharding only earns its StatefulSet+per-shard-SD complexity at *far* larger object counts.
+
+---
+
 ## Trade-offs (performance / scaling / security / cost)
 - **Performance:** read-on-scrape exporters do real work per scrape (node-exporter reads dozens of
   `/proc` files; a heavy collector set raises `scrape_duration_seconds`). Disable collectors you
@@ -202,8 +307,11 @@ flowchart LR
 3. **SPOF for the subject.** A single exporter is one point of failure for *all* data about its
    subject. KSM is one pod — if it dies, **every** `kube_*` series vanishes cluster-wide even though
    every object it describes is perfectly healthy. Native instrumentation *can't* have this (each app
-   reports itself; failure is local). → HA = 2 KSM replicas with shard config, or at minimum alert on
-   `up{job="kube-state-metrics"}==0`.
+   reports itself; failure is local). → **Do NOT "fix" this with replicas.** KSM is *stateless* and
+   self-heals from the API server on restart (a sub-scrape-interval gap), so extra replicas buy
+   **zero** availability and *duplicate every series*. Mitigate by **alerting on
+   `up{job="kube-state-metrics"}==0`** (the gap is brief & self-healing); **shard only for scale,
+   never for HA** — see the KSM deep-dive below.
 4. **Identity collisions** — the `honorLabels` case from T5/T4. The exporter carries labels about the
    *subject* (`namespace/pod/node`) that collide with the *scrape's* target labels. Only happens
    because subject ≠ target — i.e. only for exporters. (`honor_labels: false` → `exported_<label>`;
@@ -256,8 +364,15 @@ flowchart TD
 
 ---
 
-## Quiz — PENDING (resume here)
-Posed 2026-06-13, not yet answered. Brutal rules: no hints, from memory, mark wrong out loud.
+## Quiz — PASSED 2026-06-13 ✅
+All passed on own after correction. Two gaps surfaced and closed: (a) conflated KSM **sharding
+(scale)** with **replication-for-HA** — took 3 passes; (b) named `scrape_duration_seconds` before
+correcting to `pg_up`. Q5–Q6 (sharding) added with the post-quiz deep-dive.
+
+> Convention: **Questions** and **Answer key** are kept as separate sections so you can self-test
+> cold, then check.
+
+### Questions (self-test cold — don't peek at the key)
 1. The single test that decides exporter vs native instrumentation — apply it to **cAdvisor** and to
    **Grafana's own `/metrics`**.
 2. A team runs `kube-state-metrics` as a **3-replica Deployment** "for HA." Two things are now wrong
@@ -266,3 +381,39 @@ Posed 2026-06-13, not yet answered. Brutal rules: no hints, from memory, mark wr
    value. Walk the diagnosis: which metric first, the two possible outcomes, what each tells you.
 4. Why can a *single* node-exporter pod restart **not** lose cluster-wide data, while a single KSM pod
    restart **can** — in terms of subject scope and topology (ties to D2)?
+5. KSM sharding: which flags, what is the partition function, which workload object makes it
+   automatic — and **why does sharding NOT give you HA**?
+6. A team shards KSM into 4 but ~¼ of `kube_*` series are missing from Mimir. Most likely cause, and
+   the fix?
+
+### Answer key (model answers)
+1. **Subject-identity test:** does `/metrics` describe the *process itself* or *another subject*?
+   **cAdvisor** → describes the node's containers/cgroups (a foreign subject) → **exporter**
+   (exporter-shaped, embedded in the kubelet). **Grafana `/metrics`** → describes Grafana's own
+   internals via `client_golang` → **native instrumentation**.
+2. **Two defects:** (a) **Duplication** — 3 replicas watch the same API and emit identical series →
+   3× series + out-of-order/over-count in Mimir. (b) **Zero HA** — KSM is *stateless*; a restart
+   rebuilds its watch cache from the API server in seconds (sub-scrape gap, self-heals), so replicas
+   buy no availability; "for HA" is the wrong reason. **Instead:** run **one replica** (self-heals),
+   optionally **alert on `up==0`**; shard (`--total-shards`/`--shard`) **only** for scale.
+3. Check **`pg_up`** (NOT `scrape_duration_seconds`) — `up=1` already proved the scrape leg, so go to
+   the subject-reachability gauge. **Two outcomes:** `pg_up==0` → exporter can't reach the DB (DB
+   down / bad creds / network/RBAC) → translator up, subject down; `pg_up==1` → subject reachable, so
+   the flatline is downstream — value genuinely frozen / stale poll-cache, label rename
+   (`exported_*` / `honor_labels` collision), or a dashboard-query issue.
+4. **node-exporter** = per-node **DaemonSet**; subject scope = *that one host's kernel*. One pod
+   restart → only that node's metrics gap (and the counters live in the **kernel**, so they survive
+   the pod restart). **Blast radius = 1 node.** **KSM** = single **cluster-global** replica; subject =
+   the whole cluster's API objects; it is the **sole source → SPOF**. One restart → all `kube_*`
+   blind cluster-wide. **Blast radius = whole cluster.** Axis: subject scope (per-node vs
+   cluster-global) → topology (many pods vs one) → blast radius.
+5. Flags **`--total-shards=N`** and **`--shard=i`** (`i ∈ 0..N-1`). **Partition:** each pod hashes
+   every object **by UID** and emits only those where `hash(uid) mod N == i` → disjoint slices, union
+   = full cluster, zero overlap. **Automatic** via a **StatefulSet** (stable ordinal → derives
+   `--shard`). **Not HA** because it *partitions* coverage, it doesn't *duplicate* it — if a shard
+   dies, its 1/N slice goes blind until restart. Sharding solves **scale** (one pod can't hold the
+   whole watch cache / render the whole payload), not availability.
+6. The **scrape/discovery layer isn't covering all shards** — the **target allocator** is missing a
+   target for one shard pod (or its endpoint/selector misses it). Each shard owns a disjoint slice,
+   so a missing shard = its objects silently absent. **Fix:** ensure SD/TA has a target for **every**
+   shard pod.

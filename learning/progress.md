@@ -6,8 +6,8 @@ not advance until the current topic is mastered.
 
 Legend: ⬜ not started · 🟡 in progress · ✅ mastered (quiz passed) · 🔁 needs review
 
-**Current focus:** Phase 1 · sequential, **each topic taught at deep-dive depth inline** (user decision 2026-06-07) — the separate 10-part deep-dive is retired as a standalone track; its parts fold into the matching sequential topic. T6 Scraping **mastered 2026-06-13**. **T7 Exporters taught cold 2026-06-13 (learner: "vague, not concrete"); quiz PARKED — resume there.**
-**Next up:** finish the **T7 Exporters quiz** (4 Qs in `eod/Topic7.md`); then T8 — *node-exporter* (deep, = old P2).
+**Current focus:** Phase 1 · sequential, **each topic taught at deep-dive depth inline** (user decision 2026-06-07) — the separate 10-part deep-dive is retired as a standalone track; its parts fold into the matching sequential topic. T6 Scraping mastered 2026-06-13. **T7 Exporters MASTERED 2026-06-13** (quiz passed; +KSM/sharding deep-dive added post-quiz — was a teaching gap the learner caught). **T8 node-exporter TAUGHT 2026-06-13 (full Topic8.md); quiz + live testing PARKED for tomorrow** (daily cluster was torn down EOD).
+**Next up (tomorrow):** **T8 node-exporter quiz + live testing** on the fresh daily cluster — 6 Qs + answer key in `eod/Topic8.md`, exercises listed there. Then T9 — *kube-state-metrics* (= old P1; much of it now pre-covered in Topic7's KSM deep-dive).
 
 ---
 
@@ -38,8 +38,8 @@ scrape→WAL→Mimir→S3→Grafana (T28).
 | 4 | Prometheus architecture | ✅ | pass | — | mastered 2026-06-07 (live TA hands-on): 4 jobs = TA(SD)+OTel receiver(retrieval)+Mimir(TSDB/PromQL/ruler/AM); SD funnel discover→relabel→assign; per-node vs consistent-hashing; up==0 troubleshoot ladder; exported_*/honor_labels. see eod/Topic4.md |
 | 5 | Pull model | ✅ | pass | — | mastered 2026-06-07 (4 live /metrics archetypes — node-exporter/KSM/Mimir/cAdvisor): pull = scraper initiates GET; collector = pull→push pivot, TA never scrapes; up = scrape-success ≠ app-health (500→up=0); counter location (kernel survives pod restart vs in-process resets that rate() heals); ephemeral→Pushgateway (stale value + breaks up); unreachable→push. see eod/Topic5.md |
 | 6 | Scraping | ✅ | pass | P4·P5·P6 | mastered 2026-06-13 (parked quiz completed): SD roles; discover→relabel→assign (apiservers 306→2 via `keep`); two relabel stages (relabel_configs target-level vs metric_relabel_configs = cardinality lever); `__` label lifecycle + instance defaults to `__address__`; scrape→fingerprint→series. Quiz gap = two-stage relabel conflation (Stage 1 used for both Q2+Q5), corrected. see eod/Topic6.md |
-| 7 | Exporters | 🟡 | – | — | taught cold 2026-06-13 (full Topic4-format doc): exporter = **translator** for a subject that can't speak Prometheus; line vs native instrumentation = **subject identity** (process itself → native; something else → exporter); **topology mirrors subject scope** (host-local→DaemonSet, cluster-global→single Deployment, one-instance→sidecar); failure modes = **split liveness** (`up`=exporter vs `pg_up`/`probe_success`=subject), stale cache, SPOF-for-subject, `honor_labels` collision. **Quiz PARKED — 4 Qs in eod/Topic7.md.** |
-| 8 | node-exporter | ⬜ | – | P2 | |
+| 7 | Exporters | ✅ | pass | — | mastered 2026-06-13: exporter = **translator** for a subject that can't speak Prometheus; line vs native = **subject identity** (process itself → native; something else → exporter); **topology mirrors subject scope** (host-local→DaemonSet, cluster-global→single Deployment, one-instance→sidecar); **split liveness** (`up`=exporter vs `pg_up`/`probe_success`=subject), stale cache, SPOF-for-subject, `honor_labels`. **+KSM/sharding deep-dive added post-quiz** (learner caught the gap): KSM = stateless mirror of API state; replication ≠ HA (0 gain + dup); sharding (`--total-shards`/`--shard`, hash(uid) mod N, StatefulSet) = SCALE only. 6 Qs + answer key in eod/Topic7.md. |
+| 8 | node-exporter | 🟡 | – | P2 | **taught 2026-06-13 (full Topic8.md); quiz+live testing PARKED for tomorrow.** Host/OS exporter: reads `/proc`+`/sys` **read-on-scrape** (no cache) → `/metrics :9100`; **DaemonSet (1/node)** because subject=per-node kernel (blast radius 1 node, no SPOF); counters live in **kernel** (pod restart preserves, node reboot resets — `node_boot_time_seconds` is the tell); host mounts + `--path.procfs/sysfs/rootfs` or it measures the container; inner liveness = `node_scrape_collector_success{collector}`; cardinality ≈ nodes×~1673, levers = `--no-collector.*` + fs/netdev exclude; textfile collector for custom host metrics. **6 Qs + answer key in eod/Topic8.md.** |
 | 9 | kube-state-metrics | 🟡 | – | **P1** ← current | active deep-dive part |
 | 10 | ServiceMonitor | ⬜ | – | P3·P5 | |
 | 11 | PodMonitor | ⬜ | – | — | |
@@ -110,6 +110,15 @@ scrape→WAL→Mimir→S3→Grafana (T28).
   endpoints" — it's *every* Service's endpoints cluster-wide; the `keep` narrows to 2. And Q3a: a
   relabel **sets `instance` to the node name**, overriding the `instance=__address__` default — not
   the other way round. Recovered all on retry.
+- 2026-06-13: T7 — **conflated KSM *sharding* (a SCALE tool) with *replication-for-HA*** — proposed
+  "2 replicas + shard config" / "`--total-shards`/`--shard`" three times as the HA fix. Reality:
+  sharding *partitions* coverage (each pod owns `hash(uid) mod N` slice, disjoint) → scales by object
+  count; it does **not** give HA (a dead shard's slice goes blind). The HA answer is that KSM is
+  **stateless** (rebuilds its watch cache from the API server in seconds) so replicas buy **zero**
+  availability *and* duplicate every series → run **1 replica**, alert on `up==0`. Also named
+  **`scrape_duration_seconds`** before correcting to **`pg_up`** as the subject-reachability gauge
+  (scrape duration = how long the scrape took, not whether the exporter reached its subject).
+  Recovered all on retry. → the missing teaching (KSM role + sharding) was added to `Topic7.md`.
 
 ## Quiz score history
 _(Claude appends: date · topic · result · the gap it revealed)_
@@ -132,3 +141,11 @@ _(Claude appends: date · topic · result · the gap it revealed)_
   `metric_relabel_configs`); the 306 = all cluster endpoints not just the apiserver's; Q3a the
   relabel *sets* `instance`=node-name overriding the `=__address__` default. Q1 keep mapping nailed:
   `namespace=default ; service_name=kubernetes ; endpoint_port_name=https`. see eod/Topic6.md.
+- 2026-06-13 · T7 Exporters · PASS · clean cold on Q1 subject-identity (cAdvisor=exporter,
+  Grafana=native) and Q4 topology/blast-radius (per-node DaemonSet 1-node vs cluster-global KSM SPOF).
+  **Corrected on retry (3 passes):** KSM *sharding (scale)* vs *replication-for-HA* — kept proposing
+  shards as the HA fix; closed only after I taught KSM's role (stateless mirror) + sharding mechanics,
+  landing "3 replicas buy zero availability because KSM persists nothing & rebuilds from the API
+  server; run 1 replica." Also `scrape_duration_seconds`→`pg_up` correction on Q3. Caught a real
+  teaching gap ("you quizzed me on sharding without teaching it") → KSM/sharding deep-dive + Q5–Q6
+  added to eod/Topic7.md. see eod/Topic7.md.

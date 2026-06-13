@@ -1,0 +1,12 @@
+%% node-exporter: host /proc + /sys → collectors → /metrics :9100 → pull → Mimir (Topic 8, D1)
+%% Render: GitHub/VSCode mermaid preview, or mermaid.live
+flowchart LR
+  subgraph HOST["EC2 worker node (SUBJECT — can't speak Prometheus)"]
+    PROC["/proc  (cpu, mem, net, diskstats, loadavg, fd)"]
+    SYS["/sys  (block devices, hwmon, classes)"]
+  end
+  PROC -->|"read on each scrape"| NE["node-exporter (DaemonSet pod)<br/>~50 collectors"]
+  SYS -->|"read on each scrape"| NE
+  NE -->|"renders exposition text"| EP["/metrics  :9100"]
+  EP -->|"PULL: GET (Topic 5)"| RX["OTel prometheus receiver<br/>(targets from Target Allocator)"]
+  RX -->|"PUSH: OTLP / remote_write"| MIM["Mimir → S3 → Grafana"]

@@ -1,0 +1,14 @@
+%% KSM scaling: replication (wrong, for "HA") vs sharding (right, for scale) — Topic 7 deep-dive
+%% Render: GitHub/VSCode mermaid preview, or mermaid.live
+flowchart TB
+  subgraph BAD["❌ 3 replicas 'for HA' — REPLICATION"]
+    A1["KSM r1<br/>watches ALL objects"] --> M1["Mimir"]
+    A2["KSM r2<br/>watches ALL objects"] --> M1
+    A3["KSM r3<br/>watches ALL objects"] --> M1
+    M1 --> X["same series ×3<br/>→ out-of-order / over-count<br/>availability gained = 0 (stateless)"]
+  end
+  subgraph GOOD["✅ N shards — SHARDING (partition by hash(uid) mod N)"]
+    B0["shard 0<br/>objects where mod==0"] --> M2["Mimir"]
+    B1["shard 1<br/>objects where mod==1"] --> M2
+    M2 --> Y["disjoint slices<br/>union = full cluster, zero overlap<br/>scales by object count"]
+  end

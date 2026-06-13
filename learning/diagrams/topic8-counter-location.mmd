@@ -1,0 +1,7 @@
+%% WHERE node-exporter counters live: kernel holds them; pod restart preserves, node reboot resets (Topic 8, D2)
+%% Render: GitHub/VSCode mermaid preview, or mermaid.live
+flowchart TB
+  K["Linux kernel /proc/stat<br/>keeps node_cpu_seconds_total<br/>(cumulative since boot)"]
+  K -->|"read-on-scrape (no cache)"| NE["node-exporter pod"]
+  NE --> E1["pod RESTART → counter UNCHANGED<br/>(kernel kept counting; pod holds nothing)"]
+  K --> E2["node REBOOT → kernel counters ZERO<br/>node_boot_time_seconds jumps → the tell"]
