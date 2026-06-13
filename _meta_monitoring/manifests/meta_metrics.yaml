@@ -5,34 +5,22 @@ metadata:
   namespace: ${namespace}
 spec:
   mode: daemonset
-  # Operator manages a ServiceMonitor for this collector's :8888 internal telemetry
-  # (discovered by the prometheusCR TA) and stops auto-injecting prometheus.io/scrape
-  # pod annotations -> single deterministic discovery path, no annotation/SM overlap.
   observability:
     metrics:
       enableMetrics: true
       disablePrometheusAnnotations: true
   image: otel/opentelemetry-collector-contrib:0.152.0
   serviceAccount: ${service_account}
+  # Target Allocator explicitly disabled. DaemonSets shard naturally by node.
   targetAllocator:
-    enabled: true
-    image: ghcr.io/open-telemetry/opentelemetry-operator/target-allocator:0.152.0
-    replicas: 1
-    allocationStrategy: per-node
-    serviceAccount: ${service_account}
-    # Per-node allocation for the STATIC node jobs only (kubelet `kubernetes-nodes`,
-    # `kubernetes-nodes-cadvisor`). CRD discovery is intentionally NOT enabled here: a single
-    # prometheusCR plane lives on the statefulset TA (meta_ta). Two CRD-discovering TAs would
-    # need disjoint selectors to avoid double-scrape — one plane removes that whole class of
-    # drift, and nothing consumes `otel_collector_id`, so central scraping of KSM/node-exporter
-    # via the statefulset is fine.
+    enabled: false
   resources:
     requests:
       cpu: 50m
       memory: 500Mi
     limits:
       cpu: 1
-      memory: 5Gi
+      memory: 2Gi
   volumes:
     - name: internal-ca-volume
       secret:
@@ -44,23 +32,26 @@ spec:
       readOnly: true
   env:
     - name: GOMEMLIMIT
-      value: "4250MiB"
+      value: "1600MiB" # ~80% of the 2Gi pod limit
     - name: K8S_NODE_NAME
       valueFrom:
         fieldRef:
           fieldPath: spec.nodeName
-    - name: K8S_POD_NAME
+    - name: HOST_IP
       valueFrom:
         fieldRef:
-          fieldPath: metadata.name
-    - name: K8S_NAMESPACE
-      valueFrom:
-        fieldRef:
-          fieldPath: metadata.namespace
+          fieldPath: status.hostIP
   tolerations:
     - effect: NoSchedule
       operator: Exists
   config:
+    extensions:
+      headers_setter:
+        headers:
+          - action: upsert
+            key: X-Scope-OrgId
+            from_context: X-Scope-OrgId
+
     receivers:
       prometheus:
         config:
@@ -68,69 +59,48 @@ spec:
             scrape_interval: 60s
             scrape_timeout: 10s
           scrape_configs:
+            # Scrape THIS node's kubelet directly — the daemonset pod knows its own host IP, so no node
+            # SD is needed. `role: node` would make every pod watch ALL nodes (N×N watches per cluster
+            # ×200 clusters). No node-label `labelmap` either: it stamps every node label onto every
+            # kubelet/cadvisor series (large cardinality); the `node` identity is added once via the
+            # attributes processor below.
             - job_name: kubernetes-nodes
               bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
-              kubernetes_sd_configs:
-                - role: node
-              relabel_configs:
-                - action: labelmap
-                  regex: __meta_kubernetes_node_label_(.+)
-                - replacement: kubernetes.default.svc:443
-                  target_label: __address__
-                - regex: (.+)
-                  replacement: /api/v1/nodes/$$1/proxy/metrics
-                  source_labels:
-                    - __meta_kubernetes_node_name
-                  target_label: __metrics_path__
               scheme: https
               tls_config:
                 ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
-                insecure_skip_verify: true
+                insecure_skip_verify: true # kubelet serves a node-scoped cert
+              metrics_path: /metrics
+              static_configs:
+                - targets: ["$${env:HOST_IP}:10250"]
+
             - job_name: kubernetes-nodes-cadvisor
               bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
-              kubernetes_sd_configs:
-                - role: node
-              relabel_configs:
-                - action: labelmap
-                  regex: __meta_kubernetes_node_label_(.+)
-                - replacement: kubernetes.default.svc:443
-                  target_label: __address__
-                - regex: (.+)
-                  replacement: /api/v1/nodes/$$1/proxy/metrics/cadvisor
-                  source_labels:
-                    - __meta_kubernetes_node_name
-                  target_label: __metrics_path__
-                - action: replace
-                  source_labels:
-                    - __meta_kubernetes_node_name
-                  target_label: node
-                - action: replace
-                  source_labels:
-                    - __meta_kubernetes_namespace
-                  target_label: namespace
               scheme: https
               tls_config:
                 ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
                 insecure_skip_verify: true
-    extensions:
-      headers_setter:
-        headers:
-          - action: upsert
-            key: X-Scope-OrgId
-            from_context: X-Scope-OrgId
+              metrics_path: /metrics/cadvisor
+              static_configs:
+                - targets: ["$${env:HOST_IP}:10250"]
+
     processors:
+      memory_limiter:
+        check_interval: 1s
+        limit_mib: 1500
+        spike_limit_mib: 300
       batch:
+        send_batch_size: 1000
         send_batch_max_size: 1000
         timeout: 1s
-        send_batch_size: 1000
-      memory_limiter:
-        limit_mib: 4200
-        spike_limit_mib: 1000
-        check_interval: 1s
       attributes:
         actions:
           - key: k8s_cluster_id
             value: ${eks_cluster}
+            action: insert
+          # node identity (replaces the dropped node-label labelmap — just the node name, low cardinality)
+          - key: node
+            value: "$${env:K8S_NODE_NAME}"
             action: insert
           - key: otel_collector_id
             action: insert
@@ -141,22 +111,25 @@ spec:
             match_type: regexp
             action: update
             new_name: $$${1}
+
     exporters:
       otlp:
-        endpoint: "https://otel.gowthamvandana.com:443"
+        endpoint: "${obsrv_domain_name}"
         tls:
           insecure: false
-          insecure_skip_verify: true
+          # CA-pin against the mounted internal CA; set skip_tls_verify=false per cluster to enforce.
           # ca_file: /etc/otel/certs/ca.crt
+          insecure_skip_verify: ${skip_tls_verify}
         headers:
-          X-Scope-OrgId: obsrv
+          X-Scope-OrgId: ${tenant}
         compression: snappy
+
     service:
       extensions: [headers_setter]
       telemetry:
+        resource:
+          service.name: ${collector_id}
         metrics:
-          # must be a string (none|basic|normal|detailed); `{}` breaks the operator's
-          # telemetry unmarshal and blocks enableMetrics' ServiceMonitor creation.
           level: normal
         logs:
           level: error

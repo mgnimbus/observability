@@ -56,12 +56,13 @@ resource "helm_release" "otel_meta_cop_logs" {
   timeout          = 60
   values = [
     "${templatefile("${path.module}/manifests/otel_meta_cop_logs.yaml", {
-      collector_id    = "obsrv-logs"
-      eks_cluster     = data.terraform_remote_state.eks.outputs.cluster_name
-      namespace       = kubernetes_namespace.meta_monitoring.metadata[0].name
-      service_account = var.service_account_name
-      # obsrv_domain_name = var.obsrv_domain_name
-      # skip_tls_verify   = var.skip_tls_verify
+      collector_id      = "obsrv-logs"
+      eks_cluster       = data.terraform_remote_state.eks.outputs.cluster_name
+      namespace         = kubernetes_namespace.meta_monitoring.metadata[0].name
+      service_account   = var.service_account_name
+      obsrv_domain_name = var.obsrv_domain_name
+      skip_tls_verify   = var.skip_tls_verify
+      tenant            = var.tenant
     })}"
   ]
   depends_on = [kubernetes_secret_v1.otel_internal_ca]
@@ -69,13 +70,14 @@ resource "helm_release" "otel_meta_cop_logs" {
 
 resource "kubectl_manifest" "ta" {
   yaml_body = templatefile("${path.module}/manifests/meta_ta.yaml", {
-    collector_id    = "obsrv-ta"
-    eks_cluster     = data.terraform_remote_state.eks.outputs.cluster_name
-    namespace       = kubernetes_namespace.meta_monitoring.metadata[0].name
-    service_account = var.service_account_name
-    version         = "0.120.1"
-    # obsrv_domain_name = var.obsrv_domain_name
-    # skip_tls_verify   = var.skip_tls_verify
+    collector_id      = "obsrv-ta"
+    eks_cluster       = data.terraform_remote_state.eks.outputs.cluster_name
+    namespace         = kubernetes_namespace.meta_monitoring.metadata[0].name
+    service_account   = var.service_account_name
+    version           = "0.120.1"
+    obsrv_domain_name = var.obsrv_domain_name
+    skip_tls_verify   = var.skip_tls_verify
+    tenant            = var.tenant
   })
   depends_on = [kubernetes_secret_v1.otel_internal_ca]
 }
@@ -83,17 +85,33 @@ resource "kubectl_manifest" "ta" {
 
 resource "kubectl_manifest" "metrics" {
   yaml_body = templatefile("${path.module}/manifests/meta_metrics.yaml", {
-    collector_id    = "obsrv-metrics-new"
-    eks_cluster     = data.terraform_remote_state.eks.outputs.cluster_name
-    namespace       = kubernetes_namespace.meta_monitoring.metadata[0].name
-    service_account = var.service_account_name
-    # obsrv_domain_name = var.obsrv_domain_name
-    # skip_tls_verify   = var.skip_tls_verify
-
+    collector_id      = "obsrv-metrics-new"
+    eks_cluster       = data.terraform_remote_state.eks.outputs.cluster_name
+    namespace         = kubernetes_namespace.meta_monitoring.metadata[0].name
+    service_account   = var.service_account_name
+    obsrv_domain_name = var.obsrv_domain_name
+    skip_tls_verify   = var.skip_tls_verify
+    tenant            = var.tenant
   })
   depends_on = [kubernetes_secret_v1.otel_internal_ca]
 }
 
+
+# Cluster-scoped Kubernetes Events -> Loki. Singleton deployment (events are not node-local; >1 replica
+# duplicates every event). Reuses otel-ta-sa (events list/watch in the ClusterRole). Its :8888
+# self-telemetry is covered by the collector-self ServiceMonitor.
+resource "kubectl_manifest" "events" {
+  yaml_body = templatefile("${path.module}/manifests/meta_events.yaml", {
+    collector_id      = "obsrv-events"
+    eks_cluster       = data.terraform_remote_state.eks.outputs.cluster_name
+    namespace         = kubernetes_namespace.meta_monitoring.metadata[0].name
+    service_account   = var.service_account_name
+    obsrv_domain_name = var.obsrv_domain_name
+    skip_tls_verify   = var.skip_tls_verify
+    tenant            = var.tenant
+  })
+  depends_on = [kubernetes_secret_v1.otel_internal_ca]
+}
 
 resource "kubectl_manifest" "serviceaccount" {
   yaml_body = file("${path.module}/manifests/serviceaccount.yaml")
@@ -112,6 +130,16 @@ resource "kubectl_manifest" "clusterrolebinding" {
 # prometheus.io/scrape annotation, so that job was removed from meta_metrics.yaml to avoid a double-scrape.
 resource "kubectl_manifest" "coredns_servicemonitor" {
   yaml_body = file("${path.module}/manifests/coredns-servicemonitor.yaml")
+}
+
+# ServiceMonitor scraping the operator collectors' :8888 self-telemetry (otelcol_*). The operator emits
+# *-collector-monitoring Services from enableMetrics:true but no ServiceMonitor (its
+# observability.prometheus feature gate is off), so obsrv-ta/obsrv-metrics-new were unmonitored.
+# Discovered by the match-all prometheusCR TA. (The Helm log collector uses a chart PodMonitor instead.)
+resource "kubectl_manifest" "collector_self_servicemonitor" {
+  yaml_body = templatefile("${path.module}/manifests/collector-self-servicemonitor.yaml", {
+    namespace = kubernetes_namespace.meta_monitoring.metadata[0].name
+  })
 }
 
 # Secret containing the CA cert for internal clients to trust the server

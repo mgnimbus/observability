@@ -41,4 +41,11 @@ variable "obsrv_domain_name" {
 variable "skip_tls_verify" {
   description = "To enable/disable TLS"
   type        = bool
+  default     = true
+}
+
+variable "tenant" {
+  description = "Mimir/Loki tenant (X-Scope-OrgID) the collectors write to"
+  type        = string
+  default     = "obsrv"
 }

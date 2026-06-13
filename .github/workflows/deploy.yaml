@@ -24,7 +24,7 @@ jobs:
     name: "Deploy Primary Infrastructure"
     runs-on: ubuntu-latest
     strategy:
-      fail-fast: false # one failed leg must not cancel siblings mid-apply
+      fail-fast: false
       matrix:
         component: [eks, crd, backend]
         include:
@@ -34,7 +34,7 @@ jobs:
             directory: ./_1.3_crd
           - component: backend
             directory: ./_3_s3_backend
-      max-parallel: 1 # Enforces sequential execution: eks -> crd -> backend
+      max-parallel: 1
     steps:
       - name: Checkout code
         uses: actions/checkout@v6.0.3
@@ -53,7 +53,6 @@ jobs:
         with:
           terraform_version: ${{ env.TF_VERSION }}
 
-      # Generated kubeconfig needed specifically for the CRD step to touch the cluster
       - name: Update kubeconfig (if CRD)
         if: matrix.component == 'crd'
         run: |
@@ -68,7 +67,7 @@ jobs:
           terraform plan -lock-timeout=5m -out=tfplan
           terraform apply -lock-timeout=5m -auto-approve tfplan
 
-  # 2. Secondary Infrastructure (Runs cleanly right after Primary + CRDs are complete)
+  # 2. Secondary Infrastructure
   secondary-infrastructure:
     name: "Deploy Secondary Infrastructure"
     needs: primary-infrastructure
@@ -120,12 +119,6 @@ jobs:
           terraform plan -lock-timeout=5m -out=tfplan
           terraform apply -lock-timeout=5m -auto-approve tfplan
 
-  # ── Monitoring stack — deployed in STRICT STAGES, each waiting for the previous ──
-  #     1 nginx-ingress → 2 backends (loki/mimir/tempo) → 3 otel (operator→collector)
-  #   → 4 grafana → 5 meta-monitoring
-  # Real ordering comes from `needs:`. The old single matrix + `order`/sleep actually ran
-  # everything at once (sleep was a hack); this guarantees dependencies are up first.
-
   # Stage 1 — ingress entrypoint
   monitoring-nginx:
     name: "Monitoring · 1 · nginx-ingress"
@@ -157,7 +150,7 @@ jobs:
           terraform plan -lock-timeout=5m -out=tfplan
           terraform apply -lock-timeout=5m -auto-approve tfplan
 
-  # Stage 2 — storage backends (loki + mimir + tempo, in parallel)
+  # Stage 2 — storage backends
   monitoring-backends:
     name: "Monitoring · 2 · backends (loki/mimir/tempo)"
     needs: monitoring-nginx
@@ -195,7 +188,7 @@ jobs:
           terraform plan -lock-timeout=5m -out=tfplan
           terraform apply -lock-timeout=5m -auto-approve tfplan
 
-  # Stage 3 — OpenTelemetry: operator first, then collector
+  # Stage 3 — OpenTelemetry
   monitoring-otel:
     name: "Monitoring · 3 · OpenTelemetry"
     needs: monitoring-backends
@@ -298,6 +291,51 @@ jobs:
           terraform plan -lock-timeout=5m -out=tfplan
           terraform apply -lock-timeout=5m -auto-approve tfplan
 
+  # Stage 6 — Observability (Grafana Dashboards via Tunnel)
+  monitoring-observability:
+    name: "Monitoring · 6 · Observability Dashboards"
+    needs: monitoring-meta
+    if: github.event.inputs.deploy_monitoring == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6.0.3
+        with:
+          ref: ${{ github.ref }}
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v6.2.0
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v4.0.1
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+      - name: Update kubeconfig
+        run: |
+          cd _1_eks && terraform init
+          aws eks update-kubeconfig --region ${{ env.AWS_REGION }} --name "$(terraform output -raw cluster_name)"
+
+      - name: Deploy Dashboards via Port Forward
+        working-directory: ./_9_grafana_dashboards
+        env:
+          TF_VAR_grafana_admin_password: ${{ secrets.GRAFANA_ADMIN_PASSWORD }}
+        run: |
+          echo "🔌 Exposing Grafana local port forward..."
+          kubectl port-forward -n grafana svc/grafana 3000:80 &
+          TUNNEL_PID=$!
+
+          echo "⏳ Giving port-forward a moment to bind..."
+          sleep 5
+
+          echo "📊 Deploying Grafana dashboards..."
+          terraform init
+          terraform plan -lock-timeout=5m -out=tfplan
+          terraform apply -lock-timeout=5m -auto-approve tfplan
+
+          echo "🛑 Tearing down port-forward session..."
+          kill $TUNNEL_PID
+
   # Summary
   summary:
     name: "Deployment Summary"
@@ -309,6 +347,7 @@ jobs:
       - monitoring-otel
       - monitoring-grafana
       - monitoring-meta
+      - monitoring-observability
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -324,5 +363,6 @@ jobs:
           echo "**Monitoring · 3 otel**: ${{ needs.monitoring-otel.result }}" >> $GITHUB_STEP_SUMMARY
           echo "**Monitoring · 4 grafana**: ${{ needs.monitoring-grafana.result }}" >> $GITHUB_STEP_SUMMARY
           echo "**Monitoring · 5 meta**: ${{ needs.monitoring-meta.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Monitoring · 6 dashboards**: ${{ needs.monitoring-observability.result }}" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "🚀 Infrastructure deployed by @${{ github.actor }}" >> $GITHUB_STEP_SUMMARY

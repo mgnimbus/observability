@@ -193,3 +193,7 @@ serviceMonitor:
   interval: 60s
   metricsEndpoints:
     - port: metrics
+      metricRelabelings:
+        - sourceLabels: [__name__]
+          regex: "otelcol_(process_cpu_.+|process_runtime_.+|otelsvc_k8s_.+|processor_internal_duration_seconds.*|processor_batch_metadata_cardinality|exporter_prometheusremotewrite_.+|processor_batch_batch_send_size(_bytes)?_bucket)"
+          action: drop

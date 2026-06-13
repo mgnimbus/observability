@@ -1,0 +1,32 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: otel-collector-self
+  namespace: ${namespace}
+  labels:
+    app.kubernetes.io/name: otel-collector-self
+spec:
+  # Operator-managed collectors (obsrv-ta statefulset, obsrv-metrics-new daemonset) each get a
+  # `*-collector-monitoring` Service from `enableMetrics: true` but NO ServiceMonitor — that needs the
+  # operator's `operator.observability.prometheus` feature gate, which is off. This SM scrapes their
+  # :8888 self-telemetry (otelcol_*). Discovered by the statefulset TA (serviceMonitorSelector: {}).
+  # The Helm log collector renders no Service in daemonset mode and is covered by a PodMonitor instead.
+  # Distinct per-collector `job` comes from each collector's service.telemetry.resource.service.name.
+  namespaceSelector:
+    matchNames: [${namespace}]
+  selector:
+    matchLabels:
+      operator.opentelemetry.io/collector-service-type: monitoring
+  endpoints:
+    - port: monitoring          # :8888
+      interval: 60s
+      path: /metrics
+      # Drop high-cardinality / low-value self-telemetry: process_cpu+runtime, k8sattributes otelsvc_k8s_*,
+      # the batch send-size histogram (~23 series/pod), prometheusremotewrite, batch metadata, internal
+      # durations. KEEP otelcol_process_uptime + otelcol_process_memory_rss — the OtelCol dashboard's
+      # `job` variable + 4 suffix-detector vars anchor on those two (dropping them blanks the whole board).
+      # Actionable signals (receiver/processor refused+dropped, exporter sent/send_failed/queue) are kept.
+      metricRelabelings:
+        - sourceLabels: [__name__]
+          regex: "otelcol_(process_cpu_.+|process_runtime_.+|otelsvc_k8s_.+|processor_internal_duration_seconds.*|processor_batch_metadata_cardinality|exporter_prometheusremotewrite_.+|processor_batch_batch_send_size(_bytes)?_bucket)"
+          action: drop

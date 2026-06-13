@@ -1,0 +1,124 @@
+apiVersion: opentelemetry.io/v1beta1
+kind: OpenTelemetryCollector
+metadata:
+  name: ${collector_id}
+  namespace: ${namespace}
+spec:
+  # Cluster-scoped event collection MUST be a singleton. Events are not node-local, so a daemonset —
+  # or ANY autoscaled collector (the statefulset TA, the gateway) — would ingest every event once per
+  # replica. One deployment, one replica, no autoscaler. There is no clean leader-elected HA for the
+  # k8sobjects receiver, so don't raise replicas for redundancy — that just duplicates events.
+  mode: deployment
+  replicas: 1
+  observability:
+    metrics:
+      enableMetrics: true
+      disablePrometheusAnnotations: true
+  image: otel/opentelemetry-collector-contrib:0.152.0
+  serviceAccount: ${service_account}
+  volumes:
+    - name: internal-ca-volume
+      secret:
+        secretName: otel-internal-ca-secret
+        defaultMode: 444
+  volumeMounts:
+    - name: internal-ca-volume
+      mountPath: /etc/otel/certs/
+      readOnly: true
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  env:
+    - name: GOMEMLIMIT
+      value: "400MiB" # ~80% of the 512Mi pod limit
+  config:
+    extensions:
+      headers_setter:
+        headers:
+          - action: upsert
+            key: X-Scope-OrgId
+            from_context: X-Scope-OrgId
+
+    receivers:
+      # Watch cluster Events and emit each as a log record. auth_type: serviceAccount uses the pod SA
+      # (otel-ta-sa — events list/watch granted in the ClusterRole). mode: watch streams in real time.
+      k8sobjects:
+        auth_type: serviceAccount
+        objects:
+          - name: events
+            mode: watch
+
+    processors:
+      memory_limiter:
+        check_interval: 1s
+        limit_mib: 450
+        spike_limit_mib: 100
+      resource:
+        attributes:
+          - key: k8s_cluster_id
+            value: ${eks_cluster}
+            action: insert
+          - key: otel_collector_id
+            value: ${collector_id}
+            action: insert
+      # Keep Warning+ only — drop Normal events (Scheduled/Pulled/Created/Started/...) to cut Loki
+      # volume ×200 clusters. A log record is dropped when the condition is true. (Verify the body path
+      # against a sample event after first deploy — k8sobjects emits the Event object as the body map.)
+      # k8sobjects watch wraps the event: body["type"] is the watch verb (ADDED/MODIFIED/DELETED),
+      # the actual k8s event type (Normal/Warning) is at body["object"]["type"].
+      filter/normal:
+        error_mode: ignore
+        logs:
+          log_record:
+            - 'body["object"]["type"] == "Normal"'
+      # Collapse each surviving Warning event to a readable line and surface the key fields as queryable
+      # attributes. k8sobjects otherwise ships the entire event object (incl. noisy managedFields) as JSON.
+      # On any nil field the set(body,...) is skipped (error_mode: ignore) and that event stays full JSON.
+      transform/events:
+        error_mode: ignore
+        log_statements:
+          - context: log
+            statements:
+              - 'set(attributes["k8s.event.reason"], body["object"]["reason"])'
+              - 'set(attributes["k8s.event.kind"], body["object"]["involvedObject"]["kind"])'
+              - 'set(attributes["k8s.event.name"], body["object"]["involvedObject"]["name"])'
+              - 'set(attributes["k8s.event.namespace"], body["object"]["involvedObject"]["namespace"])'
+              - 'set(severity_text, body["object"]["type"])'
+              - 'set(body, Concat([body["object"]["type"], " ", body["object"]["reason"], " ", body["object"]["involvedObject"]["kind"], "/", body["object"]["involvedObject"]["name"], ": ", body["object"]["message"]], ""))'
+      batch:
+        send_batch_size: 1000
+        send_batch_max_size: 1000
+        timeout: 5s
+
+    exporters:
+      otlp:
+        endpoint: "${obsrv_domain_name}"
+        tls:
+          insecure: false
+          # CA-pin disabled for now. Re-enable by uncommenting ca_file + setting skip_tls_verify=false.
+          # ca_file: /etc/otel/certs/ca.crt
+          insecure_skip_verify: ${skip_tls_verify}
+        headers:
+          X-Scope-OrgId: ${tenant}
+        compression: snappy
+
+    service:
+      extensions: [headers_setter]
+      telemetry:
+        # Distinct service.name -> distinct `job` (obsrv-events); its :8888 is covered by the
+        # collector-self ServiceMonitor (operator-managed -> gets a *-collector-monitoring Service).
+        resource:
+          service.name: ${collector_id}
+        metrics:
+          level: normal
+        logs:
+          level: error
+      pipelines:
+        logs:
+          receivers: [k8sobjects]
+          processors: [memory_limiter, resource, filter/normal, transform/events, batch]
+          exporters: [otlp]

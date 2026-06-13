@@ -38,3 +38,4 @@ terraform.rc
 # the script is tracked, the point-in-time captures are not)
 _meta_monitoring/baseline-*.txt
 _meta_monitoring/after*.txt
+_golden_template/**

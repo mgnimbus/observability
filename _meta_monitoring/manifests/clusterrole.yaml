@@ -26,7 +26,11 @@ rules:
     resources: ["jobs"]
     verbs: ["list", "watch"]
   - apiGroups: [""]
-    resources: ["nodes/proxy"]
+    # nodes/metrics: direct kubelet scrape at :10250/metrics + /metrics/cadvisor. The metrics
+    # daemonset scrapes the local kubelet directly (not via the API-server proxy), and the kubelet
+    # authorizes that against the nodes/metrics subresource with verb `get`. nodes/proxy is kept for
+    # any proxy-path access.
+    resources: ["nodes/proxy", "nodes/metrics"]
     verbs: ["get"]
   - apiGroups: [""]
     resources: ["nodes/stats", "configmaps", "events"]
@@ -51,6 +55,11 @@ rules:
     verbs: ["list", "watch"]
   - apiGroups: ["discovery.k8s.io"]
     resources: ["endpointslices"]
+    verbs: ["list", "watch"]
+  # Cluster-event collection (meta_events / obsrv-events, k8sobjects receiver). Core "" events are
+  # already granted above; this covers the events.k8s.io API the receiver may resolve to instead.
+  - apiGroups: ["events.k8s.io"]
+    resources: ["events"]
     verbs: ["list", "watch"]
   # Scrape the kube-apiserver /metrics non-resource endpoint (fixes kubernetes-apiservers up==0;
   # that job GETs /metrics on kubernetes.default.svc:443 using this SA's bearer token).

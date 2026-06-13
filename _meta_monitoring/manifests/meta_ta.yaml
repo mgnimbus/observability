@@ -1,13 +1,10 @@
 apiVersion: opentelemetry.io/v1beta1
 kind: OpenTelemetryCollector
 metadata:
-  name: ${collector_id}
+  name: ${collector_id}-metrics-stateful
   namespace: ${namespace}
 spec:
   mode: statefulset
-  # Operator manages a ServiceMonitor for this collector's :8888 internal telemetry
-  # (discovered by the prometheusCR TA) and stops auto-injecting prometheus.io/scrape
-  # pod annotations -> single deterministic discovery path, no annotation/SM overlap.
   observability:
     metrics:
       enableMetrics: true
@@ -19,10 +16,11 @@ spec:
     replicas: 1
     prometheusCR:
       enabled: true
-      # SINGLE cluster-wide prometheusCR plane: discovers ALL ServiceMonitors (loki, mimir/*,
-      # kube-state-metrics, node-exporter, cert-manager, ...). No tier label to reason about —
-      # there is no second CRD-discovering TA to partition against. `{}` = match all.
       serviceMonitorSelector: {}
+      # Also discover the log collector's chart-rendered PodMonitor: a daemonset Helm collector
+      # renders no Service, so its :8888 self-telemetry is only reachable via a PodMonitor. An
+      # absent podMonitorSelector selects NONE, so it must be set explicitly.
+      podMonitorSelector: {}
     serviceAccount: ${service_account}
   serviceAccount: ${service_account}
   volumes:
@@ -30,11 +28,11 @@ spec:
       secret:
         secretName: otel-internal-ca-secret
         defaultMode: 444
-
   volumeMounts:
     - name: internal-ca-volume
       mountPath: /etc/otel/certs/
       readOnly: true
+
   resources:
     requests:
       cpu: 100m
@@ -47,51 +45,12 @@ spec:
     maxReplicas: 10
     targetCPUUtilization: 70
     targetMemoryUtilization: 70
+
   env:
     - name: GOMEMLIMIT
       value: "4250MiB"
-    - name: "K8S_NODE_NAME"
-      valueFrom:
-        fieldRef:
-          fieldPath: "spec.nodeName"
-    - name: "K8S_POD_NAME"
-      valueFrom:
-        fieldRef:
-          fieldPath: "metadata.name"
-    - name: "K8S_NAMESPACE"
-      valueFrom:
-        fieldRef:
-          fieldPath: "metadata.namespace"
-  config:
-    receivers:
-      prometheus:
-        config:
-          global:
-            scrape_interval: 60s
-            scrape_timeout: 10s
-          scrape_configs:
-          - job_name: kubernetes-apiservers
-            bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
-            kubernetes_sd_configs:
-            - role: endpoints
-            relabel_configs:
-            - action: keep
-              regex: default;kubernetes;https
-              source_labels:
-              - __meta_kubernetes_namespace
-              - __meta_kubernetes_service_name
-              - __meta_kubernetes_endpoint_port_name
-            scheme: https
-            tls_config:
-              ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
-            # apiserver_*/etcd_* (~56% of ingest, ~69k series) — verified unconsumed by any
-            # dashboard or ruler rule (2026-06-10). up/scrape_* are synthesized post-scrape and
-            # are not affected, so the job stays up=1; workqueue_*/go_*/process_* are kept.
-            metric_relabel_configs:
-            - source_labels: [__name__]
-              regex: (apiserver|etcd)_.*
-              action: drop
 
+  config:
     extensions:
       headers_setter:
         headers:
@@ -99,15 +58,41 @@ spec:
             key: X-Scope-OrgId
             from_context: X-Scope-OrgId
 
+    receivers:
+      prometheus:
+        config:
+          global:
+            scrape_interval: 60s
+            scrape_timeout: 10s
+          scrape_configs:
+            - job_name: kubernetes-apiservers
+              bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+              kubernetes_sd_configs:
+                - role: endpoints
+              relabel_configs:
+                - action: keep
+                  regex: default;kubernetes;https
+                  source_labels:
+                    - __meta_kubernetes_namespace
+                    - __meta_kubernetes_service_name
+                    - __meta_kubernetes_endpoint_port_name
+              scheme: https
+              tls_config:
+                ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+              metric_relabel_configs:
+                - source_labels: [__name__]
+                  regex: (apiserver|etcd)_.*
+                  action: drop
+
     processors:
       memory_limiter:
-        limit_mib: 4200
-        spike_limit_mib: 1000
         check_interval: 1s
-      batch/metrics:
+        limit_mib: 4250
+        spike_limit_mib: 850
+      batch:
+        send_batch_size: 1000
         send_batch_max_size: 1000
         timeout: 1s
-        send_batch_size: 1000
       attributes:
         actions:
           - key: k8s_cluster_id
@@ -123,26 +108,32 @@ spec:
             match_type: regexp
             action: update
             new_name: $$${1}
+
     exporters:
       otlp:
-        endpoint: "https://otel.gowthamvandana.com:443"
+        endpoint: "${obsrv_domain_name}"
         tls:
           insecure: false
-          insecure_skip_verify: true
+          # CA-pin against the mounted internal CA; set skip_tls_verify=false per cluster to enforce.
+          # ca_file: /etc/otel/certs/ca.crt
+          insecure_skip_verify: ${skip_tls_verify}
         headers:
-          X-Scope-OrgId: obsrv
+          X-Scope-OrgId: ${tenant}
         compression: snappy
+
     service:
       extensions: [headers_setter]
       telemetry:
+        # Distinct service.name -> distinct `job` when :8888 self-telemetry is scraped (the OTel
+        # prometheus receiver maps service.name->job; default is otelcol-contrib for every collector).
+        resource:
+          service.name: ${collector_id}
         metrics:
-          # must be a string (none|basic|normal|detailed); `{}` breaks the operator's
-          # telemetry unmarshal and blocks enableMetrics' ServiceMonitor creation.
           level: normal
         logs:
           level: error
       pipelines:
         metrics:
           receivers: [prometheus]
-          processors: [memory_limiter, attributes, metricstransform, batch/metrics]
+          processors: [memory_limiter, attributes, metricstransform, batch]
           exporters: [otlp]
