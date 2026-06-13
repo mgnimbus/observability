@@ -1,0 +1,12 @@
+%% "Exporter metric missing/wrong" ladder — split liveness: scrape (up) vs subject (pg_up) (Topic 7, D3)
+%% Render: GitHub/VSCode mermaid preview, or mermaid.live
+flowchart TD
+  START["Subject metric missing / flatlined in Grafana"] --> Q1{"up == 1 ?"}
+  Q1 -->|No| B1["Scrape failed — Topic 5 ladder (network/TLS/auth/port). A SCRAPE bug, not the subject."]
+  Q1 -->|Yes| Q2{"subject-reachability gauge<br/>(pg_up / probe_success) == 1 ?"}
+  Q2 -->|No| B2["Exporter can't reach its SUBJECT (DB down, bad creds, RBAC). Translator up; source isn't."]
+  Q2 -->|Yes| Q3{"value changing, or frozen?"}
+  Q3 -->|Frozen| B3["STALE — poll interval > scrape interval, or watch cache wedged."]
+  Q3 -->|Changing| Q4{"labels renamed?"}
+  Q4 -->|Yes| B4["exported_<label> collision (honor_labels) — Topic 4."]
+  Q4 -->|No| OK["Subject genuinely in that state."]

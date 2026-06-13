@@ -1,0 +1,12 @@
+%% Exporter = translator: subject (can't speak Prometheus) -> exporter -> /metrics -> scraper -> Mimir (Topic 7)
+%% Render: GitHub/VSCode mermaid preview, or mermaid.live
+flowchart LR
+  subgraph SUBJ["SUBJECT — can't speak Prometheus"]
+    K["kernel /proc, /sys"]
+    API["k8s API objects"]
+    DB["Postgres / Redis"]
+  end
+  SUBJ -->|"native interface (read)"| EXP["EXPORTER<br/>(translator process)"]
+  EXP -->|"renders exposition text"| M["/metrics (Prometheus format)"]
+  M -->|"PULL: GET (Topic 5)"| RX["OTel prometheus receiver"]
+  RX -->|"PUSH: OTLP"| MIM["Mimir → S3 → Grafana"]

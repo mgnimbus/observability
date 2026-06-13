@@ -6,8 +6,8 @@ not advance until the current topic is mastered.
 
 Legend: ⬜ not started · 🟡 in progress · ✅ mastered (quiz passed) · 🔁 needs review
 
-**Current focus:** Phase 1 · sequential, **each topic taught at deep-dive depth inline** (user decision 2026-06-07) — the separate 10-part deep-dive is retired as a standalone track; its parts fold into the matching sequential topic. T6 Scraping **mastered 2026-06-13** (parked quiz completed).
-**Next up:** T7 — *Exporters* (deep); then T8 — *node-exporter* (deep, = old P2).
+**Current focus:** Phase 1 · sequential, **each topic taught at deep-dive depth inline** (user decision 2026-06-07) — the separate 10-part deep-dive is retired as a standalone track; its parts fold into the matching sequential topic. T6 Scraping **mastered 2026-06-13**. **T7 Exporters taught cold 2026-06-13 (learner: "vague, not concrete"); quiz PARKED — resume there.**
+**Next up:** finish the **T7 Exporters quiz** (4 Qs in `eod/Topic7.md`); then T8 — *node-exporter* (deep, = old P2).
 
 ---
 
@@ -38,7 +38,7 @@ scrape→WAL→Mimir→S3→Grafana (T28).
 | 4 | Prometheus architecture | ✅ | pass | — | mastered 2026-06-07 (live TA hands-on): 4 jobs = TA(SD)+OTel receiver(retrieval)+Mimir(TSDB/PromQL/ruler/AM); SD funnel discover→relabel→assign; per-node vs consistent-hashing; up==0 troubleshoot ladder; exported_*/honor_labels. see eod/Topic4.md |
 | 5 | Pull model | ✅ | pass | — | mastered 2026-06-07 (4 live /metrics archetypes — node-exporter/KSM/Mimir/cAdvisor): pull = scraper initiates GET; collector = pull→push pivot, TA never scrapes; up = scrape-success ≠ app-health (500→up=0); counter location (kernel survives pod restart vs in-process resets that rate() heals); ephemeral→Pushgateway (stale value + breaks up); unreachable→push. see eod/Topic5.md |
 | 6 | Scraping | ✅ | pass | P4·P5·P6 | mastered 2026-06-13 (parked quiz completed): SD roles; discover→relabel→assign (apiservers 306→2 via `keep`); two relabel stages (relabel_configs target-level vs metric_relabel_configs = cardinality lever); `__` label lifecycle + instance defaults to `__address__`; scrape→fingerprint→series. Quiz gap = two-stage relabel conflation (Stage 1 used for both Q2+Q5), corrected. see eod/Topic6.md |
-| 7 | Exporters | ⬜ | – | — | |
+| 7 | Exporters | 🟡 | – | — | taught cold 2026-06-13 (full Topic4-format doc): exporter = **translator** for a subject that can't speak Prometheus; line vs native instrumentation = **subject identity** (process itself → native; something else → exporter); **topology mirrors subject scope** (host-local→DaemonSet, cluster-global→single Deployment, one-instance→sidecar); failure modes = **split liveness** (`up`=exporter vs `pg_up`/`probe_success`=subject), stale cache, SPOF-for-subject, `honor_labels` collision. **Quiz PARKED — 4 Qs in eod/Topic7.md.** |
 | 8 | node-exporter | ⬜ | – | P2 | |
 | 9 | kube-state-metrics | 🟡 | – | **P1** ← current | active deep-dive part |
 | 10 | ServiceMonitor | ⬜ | – | P3·P5 | |

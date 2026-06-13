@@ -52,12 +52,12 @@ module "eks" {
     obsrv = {
       ami_type       = "BOTTLEROCKET_ARM_64"
       instance_types = ["t4g.large", "m6g.large", "m7g.large", "m8g.large", "m6gd.large"]
-      capacity_type  = "ON_DEMAND"
+      capacity_type  = "SPOT"
       subnet_ids     = module.vpc.private_subnets
 
-      min_size     = 3
+      min_size     = 2
+      desired_size = 2
       max_size     = 3
-      desired_size = 3
 
       #     bootstrap_extra_args = <<-EOT
       #       # The admin host container provides SSH access and runs with "superpowers".

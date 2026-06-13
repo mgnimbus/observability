@@ -1,0 +1,10 @@
+%% An exporter's replication topology mirrors its subject's scope (Topic 7, D2)
+%% Render: GitHub/VSCode mermaid preview, or mermaid.live
+flowchart TB
+  S{"What is the subject's scope?"}
+  S -->|"per-node / host-local"| DS["DaemonSet — 1 per node<br/>scrape localhost<br/>scale unit = node count"]
+  S -->|"cluster-global (one shared API)"| DP["single Deployment — 1 replica<br/>sees everything<br/>N replicas = N× duplicate series"]
+  S -->|"one specific service instance"| SC["sidecar / one-per-instance<br/>holds 1 connection to that backend<br/>scale unit = #instances"]
+  DS --> NE["node-exporter (kernel = per node)"]
+  DP --> KSM["kube-state-metrics (API = cluster-global)"]
+  SC --> PG["Postgres exporter (1 DB = 1 instance)"]

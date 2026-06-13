@@ -93,6 +93,14 @@ config:
         insecure: true
       resource_to_telemetry_conversion:
         enabled: true # Convert resource attributes to metric labels
+      # Disabled: the gateway autoscales to >1 replica and the NLB/nginx sprays one source's OTLP
+      # across replicas. target_info is a SINGLE series per resource re-emitted every batch, so
+      # multiple writers produce non-monotonic timestamps -> Mimir err-mimir-sample-out-of-order.
+      # Safe because resource_to_telemetry_conversion already flattens service.version/instance.id/
+      # name (+all resource attrs) onto the metrics; the OtelCol dashboard's only use is an `or`
+      # fallback covered by the direct-label primary branch.
+      target_info:
+        enabled: false
       add_metric_suffixes: true
       auth:
         authenticator: headers_setter

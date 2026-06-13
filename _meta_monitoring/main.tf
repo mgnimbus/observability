@@ -45,26 +45,19 @@ resource "helm_release" "node_exporter" {
   }
 }
 
-resource "helm_release" "otel_meta_cop_logs" {
-  name = "otel-meta-cop-logs"
-
-  repository       = "https://open-telemetry.github.io/opentelemetry-helm-charts"
-  chart            = "opentelemetry-collector"
-  version          = "0.120.1"
-  create_namespace = false
-  namespace        = kubernetes_namespace.meta_monitoring.metadata[0].name
-  timeout          = 60
-  values = [
-    "${templatefile("${path.module}/manifests/otel_meta_cop_logs.yaml", {
-      collector_id      = "obsrv-logs"
-      eks_cluster       = data.terraform_remote_state.eks.outputs.cluster_name
-      namespace         = kubernetes_namespace.meta_monitoring.metadata[0].name
-      service_account   = var.service_account_name
-      obsrv_domain_name = var.obsrv_domain_name
-      skip_tls_verify   = var.skip_tls_verify
-      tenant            = var.tenant
-    })}"
-  ]
+# Node-local container-log tail -> Loki. Operator CR (was the Helm opentelemetry-collector chart),
+# now uniform with the other meta collectors: explicit config (no chart presets / label explosion),
+# and its :8888 self-telemetry is covered by the collector-self ServiceMonitor (no PodMonitor).
+resource "kubectl_manifest" "logs" {
+  yaml_body = templatefile("${path.module}/manifests/meta_logs.yaml", {
+    collector_id      = "obsrv-logs"
+    eks_cluster       = data.terraform_remote_state.eks.outputs.cluster_name
+    namespace         = kubernetes_namespace.meta_monitoring.metadata[0].name
+    service_account   = var.service_account_name
+    obsrv_domain_name = var.obsrv_domain_name
+    skip_tls_verify   = var.skip_tls_verify
+    tenant            = var.tenant
+  })
   depends_on = [kubernetes_secret_v1.otel_internal_ca]
 }
 
@@ -134,8 +127,8 @@ resource "kubectl_manifest" "coredns_servicemonitor" {
 
 # ServiceMonitor scraping the operator collectors' :8888 self-telemetry (otelcol_*). The operator emits
 # *-collector-monitoring Services from enableMetrics:true but no ServiceMonitor (its
-# observability.prometheus feature gate is off), so obsrv-ta/obsrv-metrics-new were unmonitored.
-# Discovered by the match-all prometheusCR TA. (The Helm log collector uses a chart PodMonitor instead.)
+# observability.prometheus feature gate is off). Covers all four meta collectors — ta, metrics-new,
+# events, and logs (now an operator CR too). Discovered by the match-all prometheusCR TA.
 resource "kubectl_manifest" "collector_self_servicemonitor" {
   yaml_body = templatefile("${path.module}/manifests/collector-self-servicemonitor.yaml", {
     namespace = kubernetes_namespace.meta_monitoring.metadata[0].name

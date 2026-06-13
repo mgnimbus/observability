@@ -141,4 +141,5 @@ Q2 — Counter vs gauge. Why is rate() valid on a counter but nonsense on a gaug
 
 Q3 — Histogram (the deep one). You record request latency as a histogram. What series does Mimir actually store on disk — i.e., what suffixes show up? And the trap: why can you aggregate a histogram across all your pods but you cannot do the same with a summary?
 
-claude --resume d6c17d5b-1de5-440c-b31a-07a4d73869c6
+claude --resume d6c17d5b-1de5-440c-b31a-07a4d73869c6 meta-optimization
+claude --resume eb7d8f55-dcda-46fa-b5bd-0d4bdfa3c9e2 learning/eod

@@ -1,0 +1,301 @@
+apiVersion: opentelemetry.io/v1beta1
+kind: OpenTelemetryCollector
+metadata:
+  name: ${collector_id}
+  namespace: ${namespace}
+spec:
+  # Node-local log tail. DaemonSet shards naturally by node (no Target Allocator). Operator-managed
+  # CR (not the Helm chart) so it's uniform with obsrv-ta/obsrv-metrics-new/obsrv-events and its
+  # :8888 self-telemetry is covered by the one collector-self ServiceMonitor (enableMetrics ->
+  # <name>-collector-monitoring Service) — no PodMonitor needed.
+  mode: daemonset
+  observability:
+    metrics:
+      enableMetrics: true
+      disablePrometheusAnnotations: true
+  image: otel/opentelemetry-collector-contrib:0.152.0
+  serviceAccount: ${service_account}
+  # Root: the file_storage checkpoint lives on a root-owned hostPath and /var/log/pods is root-owned.
+  # The default non-root UID gets "permission denied" opening the checkpoint db.
+  securityContext:
+    runAsUser: 0
+    runAsGroup: 0
+    runAsNonRoot: false
+  tolerations:
+    - effect: NoSchedule
+      operator: Exists
+  resources:
+    requests:
+      cpu: 200m
+      memory: 400Mi
+    limits:
+      cpu: 1
+      memory: 1Gi
+  env:
+    - name: GOMEMLIMIT
+      value: "800MiB" # ~80% of the 1Gi pod limit
+    - name: K8S_NODE_NAME # consumed by k8sattributes.node_from_env_var
+      valueFrom:
+        fieldRef:
+          fieldPath: spec.nodeName
+  volumes:
+    - name: varlogpods
+      hostPath:
+        path: /var/log/pods
+    - name: otelcol-state
+      hostPath:
+        # Tier-scoped checkpoint dir — never share a bbolt state dir between collectors.
+        path: /var/lib/otelcol/${collector_id}
+        type: DirectoryOrCreate
+    - name: internal-ca-volume
+      secret:
+        secretName: otel-internal-ca-secret
+        defaultMode: 420
+  volumeMounts:
+    - name: varlogpods
+      mountPath: /var/log/pods
+      readOnly: true
+    - name: otelcol-state
+      mountPath: /var/lib/otelcol/${collector_id}
+    - name: internal-ca-volume
+      mountPath: /etc/otel/certs/
+      readOnly: true
+
+  config:
+    extensions:
+      health_check:
+        endpoint: 0.0.0.0:13133 # explicit: the component default is localhost, kubelet probes can't reach it
+      headers_setter:
+        headers:
+          - action: upsert
+            key: X-Scope-OrgId
+            from_context: X-Scope-OrgId
+      file_storage:
+        directory: /var/lib/otelcol/${collector_id}
+
+    receivers:
+      filelog:
+        include:
+          - /var/log/pods/*/*/*.log
+        exclude:
+          # NEVER ingest this collector's own logs — an export error would be read back in and
+          # re-exported (feedback loop). Plus the falcon sensor's noisy logs.
+          - /var/log/pods/${namespace}_${collector_id}-collector-*/**
+          - /var/log/pods/*/falcon-*/**
+        start_at: end
+        storage: file_storage # checkpoint offsets across restarts -> no re-reads / duplicates
+        include_file_path: true
+        operators:
+          # CRI/Docker runtime parsing in ONE operator. Auto-detects docker/containerd/crio,
+          # stitches 16KB CRI partial lines, strips the runtime prefix to a clean body, parses the
+          # timestamp, and (add_metadata_from_filepath) extracts k8s.{namespace,pod,container}.name
+          # + k8s.pod.uid + restart count as RESOURCE attrs (consumed by k8sattributes below).
+          - type: container
+            id: container-parser
+            add_metadata_from_filepath: true
+
+          # ── otelcol-format logs (gateway container `opentelemetry-collector` + operator-managed
+          # meta collectors `otc-container`) get a dedicated structured parse: lift the zap-console
+          # fields and DROP the Go stack frames (noise). Every op here is scoped to those two
+          # container names, so all other components pass through untouched. Single-quoted YAML keeps
+          # the regex's \t \S \w backslashes literal; the regex/expr use no templatefile interpolation
+          # tokens (no dollar-brace), so templatefile passes them through verbatim.
+          #
+          # 1. Drop the stack frames. An otelcol log EVENT is ONE date-led line
+          #    (<ts>⇥<level>⇥<caller>⇥<msg>⇥{json}); the trailing github.com/… / go.… / \t…:NN frames
+          #    are NOT date-led → drop them (otelcol containers only; header lines & other apps kept).
+          - type: filter
+            id: drop-otel-frames
+            expr: 'resource["k8s.container.name"] matches "^(otc-container|opentelemetry-collector)$" && !(body matches "^[0-9]{4}-[0-9]{2}-[0-9]{2}T")'
+
+          # 2. Split the zap-console header into fields; severity from the level token. on_error:
+          #    send_quiet so a non-matching otelcol line just passes through as raw body.
+          - type: regex_parser
+            id: otel-parse
+            if: 'resource["k8s.container.name"] matches "^(otc-container|opentelemetry-collector)$"'
+            parse_from: body
+            regex: '^(?P<otctime>\S+)\t(?P<otcsev>\w+)\t(?P<otccaller>\S+)\t(?P<otcmsg>[^\t]*)(\t(?P<otcfields>\{.*\}))?$'
+            on_error: send_quiet
+            severity:
+              parse_from: attributes.otcsev
+
+          # 3. Parse the trailing {json}; lift its fields (otelcol.component.id/kind/signal, error,
+          #    dropped_items) to attributes, then drop the redundant embedded resource{} map
+          #    (k8sattributes already tags the source pod).
+          - type: json_parser
+            id: otel-json
+            if: 'attributes["otcfields"] != nil'
+            parse_from: attributes.otcfields
+            parse_to: attributes
+            on_error: send_quiet
+          - type: remove
+            id: otel-drop-resource
+            if: 'attributes["resource"] != nil'
+            field: attributes["resource"]
+
+          # 4. Clean message → body; caller → attribute; drop the scratch capture fields.
+          - type: move
+            id: otel-msg-body
+            if: 'attributes["otcmsg"] != nil'
+            from: attributes.otcmsg
+            to: body
+          - type: move
+            id: otel-caller
+            if: 'attributes["otccaller"] != nil'
+            from: attributes.otccaller
+            to: attributes["caller"]
+          - type: remove
+            id: otel-clean-time
+            if: 'attributes["otctime"] != nil'
+            field: attributes.otctime
+          - type: remove
+            id: otel-clean-sev
+            if: 'attributes["otcsev"] != nil'
+            field: attributes.otcsev
+          - type: remove
+            id: otel-clean-fields
+            if: 'attributes["otcfields"] != nil'
+            field: attributes.otcfields
+
+          # Join multi-line app output (Java/Python stack traces) on the CLEAN body. A record starts
+          # at a non-continuation line; continuation = whitespace-led frames, "Caused by:", "... N
+          # more". Capped so a pathological app can't glue unbounded lines into one record.
+          - type: recombine
+            id: stacktrace-recombine
+            combine_field: body
+            combine_with: "\n"
+            is_first_entry: body matches "^[^\\s]" && !(body matches "^(Caused by:|\\.\\.\\. \\d+ more)")
+            source_identifier: attributes["log.file.path"]
+            max_batch_size: 100
+            force_flush_period: 5s
+
+          # Drop nginx 2xx access logs (high-volume, low-value — keep 4xx/5xx). Covers BOTH access-log
+          # shapes: mimir-nginx (container `nginx`) logs `]  2xx "request"` (status after the `]`);
+          # nginx-ingress (container `controller`) logs `"request" 2xx bytes` (status after the `"`).
+          # Anchor on the status' LEFT delimiter: `[]"] +2xx ` = (`]` or `"`) then space(s) then a 2xx
+          # then space — tags the real status field ONLY, never a stray 2xx-range number (bytes / port /
+          # latency) elsewhere on the line. Verified live (MCP, 2026-06-13): drops the 2xx access flood
+          # while keeping mimir's ~97/h 4xx/5xx and the controller's own klog app logs.
+          # (Pre-fix bug: `== "nginx" && "\" 2xx "` — each source slipped a different leg: mimir failed
+          # the quote-anchored regex, nginx-ingress failed the `== "nginx"` name check.)
+          - type: filter
+            id: drop-nginx-2xx
+            expr: 'resource["k8s.container.name"] matches "^(nginx|controller)$" && body matches "[]\"] +2[0-9][0-9] "'
+
+          # Lift the app log `level` into a RESOURCE attribute (queryable in Loki) WITHOUT shipping
+          # the rest of a JSON body as attributes: parse JSON into a scratch field, move ONLY `level`
+          # out to resource["level"], then drop the scratch. logfmt lines get a targeted level=
+          # regex. on_error: send_quiet -> an unparseable line passes through untouched.
+          - type: json_parser
+            id: json-level
+            if: 'body matches "^\\{"'
+            parse_from: body
+            parse_to: attributes["__scratch"]
+            on_error: send_quiet
+          - type: move
+            id: json-level-to-resource
+            if: 'attributes["__scratch"] != nil and attributes["__scratch"]["level"] != nil'
+            from: attributes["__scratch"]["level"]
+            to: resource["level"]
+          - type: remove
+            id: drop-json-scratch
+            if: 'attributes["__scratch"] != nil'
+            field: attributes["__scratch"]
+          - type: regex_parser
+            id: kv-level
+            if: 'body matches "level=[A-Za-z]+"'
+            parse_from: body
+            regex: "level=(?P<level>[A-Za-z]+)"
+            on_error: send_quiet
+          - type: move
+            id: kv-level-to-resource
+            if: 'attributes["level"] != nil'
+            from: attributes["level"]
+            to: resource["level"]
+
+    processors:
+      memory_limiter:
+        check_interval: 1s
+        limit_mib: 800
+        spike_limit_mib: 200
+
+      k8sattributes:
+        filter:
+          # The env var NAME (the processor calls os.Getenv on it) — NOT $${env:K8S_NODE_NAME},
+          # which renders to the node-name VALUE and disables the node filter.
+          node_from_env_var: K8S_NODE_NAME
+        pod_association:
+          - sources:
+              - from: resource_attribute
+                name: k8s.pod.uid
+          - sources:
+              - from: resource_attribute
+                name: k8s.pod.name
+              - from: resource_attribute
+                name: k8s.namespace.name
+        extract:
+          # Lean: NO extractAllPodLabels/Annotations (that was the Helm preset's label explosion).
+          metadata:
+            - k8s.deployment.name
+            - k8s.node.name
+            - k8s.pod.start_time
+
+      resource:
+        attributes:
+          - action: upsert
+            key: k8s.cluster.id
+            value: ${eks_cluster}
+          - action: upsert
+            key: otel.collector.id
+            value: ${collector_id}
+          # service.name (-> Loki service_name) = deployment, else container. `insert` sets only if
+          # absent and is a no-op when the source attribute is missing, giving the fallback: pods
+          # with a deployment get the deployment name; daemonset/statefulset/static pods get the
+          # container name. Nothing stays unknown_service.
+          - action: insert
+            key: service.name
+            from_attribute: k8s.deployment.name
+          - action: insert
+            key: service.name
+            from_attribute: k8s.container.name
+
+      # resourcedetection REMOVED (2026-06-13): it added cloud_*/host_*/os_* — host_name was wrongly
+      # the collector pod, and cloud_region/zone duplicated topology_kubernetes_io_region/zone.
+      # k8sattributes already supplies node/namespace/pod/deployment.
+
+      # filter/noise DISABLED (per request) — not dropping trace/debug for now. Re-enable with the
+      # guarded `severity_number > 0 and severity_number < 9` AND set severity in the filelog ops.
+
+      batch:
+        send_batch_size: 1000
+        send_batch_max_size: 1500
+        timeout: 5s
+
+    exporters:
+      otlp:
+        endpoint: "${obsrv_domain_name}"
+        tls:
+          insecure: false
+          # CA-pin against the mounted internal CA; set skip_tls_verify=false per cluster to enforce.
+          # ca_file: /etc/otel/certs/ca.crt
+          insecure_skip_verify: ${skip_tls_verify}
+        headers:
+          X-Scope-OrgId: ${tenant}
+        compression: snappy
+
+    service:
+      extensions: [health_check, headers_setter, file_storage]
+      telemetry:
+        # Distinct service.name -> distinct `job` (obsrv-logs) on the :8888 self-telemetry, scraped
+        # by the collector-self ServiceMonitor.
+        resource:
+          service.name: ${collector_id}
+        metrics:
+          level: normal
+        logs:
+          level: error
+      pipelines:
+        logs:
+          receivers: [filelog]
+          processors: [memory_limiter, k8sattributes, resource, batch]
+          exporters: [otlp]
