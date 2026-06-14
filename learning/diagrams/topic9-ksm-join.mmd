@@ -1,0 +1,6 @@
+%% KSM info-metric join: value=1, info in labels; enrich another metric via group_left (Topic 9)
+%% Render: GitHub/VSCode mermaid preview, or mermaid.live
+flowchart LR
+  L["container_cpu_usage_seconds_total<br/>{namespace,pod} = rate"] -->|"* on(namespace,pod)<br/>group_left(node)"| J["joined<br/>{namespace,pod,node} = rate"]
+  R["kube_pod_info<br/>{namespace,pod,node,...} = 1"] --> J
+  J --> AGG["sum by(node)(...) -> per-node total"]

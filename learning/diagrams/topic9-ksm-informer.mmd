@@ -1,0 +1,8 @@
+%% KSM internals: client-go informer (LIST+WATCH) → in-memory store → scrape generates from cache (Topic 9)
+%% Render: GitHub/VSCode mermaid preview, or mermaid.live
+flowchart TB
+  API["API server (etcd = source of truth)"]
+  API -->|"client-go informer: LIST then WATCH (per resource type)"| STORE["in-memory store / indexer<br/>(current objects, event-updated)"]
+  STORE -.->|"continuous, near-real-time"| STORE
+  STORE -->|"on scrape: GENERATE metrics from cached objects"| EP["/metrics :8080"]
+  EP -->|"scrape (obsrv-ta) — ZERO API calls"| SC["Mimir"]

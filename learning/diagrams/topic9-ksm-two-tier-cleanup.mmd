@@ -1,0 +1,7 @@
+%% KSM cleanup: two-tier drop split by reversibility (Topic 9, 200-team lens)
+%% Render: GitHub/VSCode mermaid preview, or mermaid.live
+flowchart TB
+  EMIT["KSM ~155 emitted families"] --> T1{"provably-universal waste?"}
+  T1 -->|"yes"| HARD["TIER-1 HARD FLOOR (KSM never generates)<br/>--resources (drop unwatched object types)<br/>--metric-denylist (universal high-card)<br/>undo = KSM redeploy -> be conservative"]
+  T1 -->|"gray: most don't, some might"| SOFT["TIER-2 REVERSIBLE (KSM still exposes :8080)<br/>ServiceMonitor metricRelabelings drop<br/>flip-back = one relabel, no redeploy"]
+  T1 -->|"consumed / join-critical / ruler"| KEEP["KEEP (generate + ingest)<br/>38 consumed + ruler deps + kube_pod_owner/replicaset_owner/node_info/pod_info"]
