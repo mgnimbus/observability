@@ -13,8 +13,47 @@ prometheus:
       interval: 60s                   # match the global 60s scrape_interval (cost)
       honorLabels: true               # KSM exposes the DESCRIBED object's pod/namespace/node
                                       # -> let them win (clean labels); no exported_* relabel
+      # TIER-2 (reversible): KSM still GENERATES these (visible at :8080) but we don't ingest them
+      # centrally — "most teams don't need, some might". Flip-back for a requesting team = delete a
+      # name from this regex (no KSM redeploy). Gray-area, non-consumed families.
+      metricRelabelings:
+        - sourceLabels: [__name__]
+          regex: 'kube_(deployment_status_condition|endpoint_address|endpoint_ports|pod_status_ready|pod_init_container_.+|node_status_addresses)'
+          action: drop
 # Drop KSM's `prometheus.io/scrape: "true"` so it leaves the annotation job — otherwise it's
 # double-scraped (SM + service-endpoints). NOTE: the KSM chart adds this via the TOP-LEVEL
 # `prometheusScrape` knob, NOT `service.annotations` (each chart differs: cert-manager uses
 # `prometheus.enabled`, etc. — find the per-chart knob when you replicate).
 prometheusScrape: false
+
+# ── TIER-1 HARD FLOOR (KSM never generates → also saves KSM watch/CPU/mem) ──────────────────────
+# Chose --resources + --metric-denylist over a strict --metric-allowlist: the allowlist would risk
+# silently blinding a consumed panel OR a recording rule (the Mimir ruler needs kube_deployment_spec_
+# replicas + kube_statefulset_replicas, which are NOT in the dashboard-consumed set). Denylist+resources
+# = same cardinality win, far lower blast radius for ~200 teams. Tighten to allowlist later if needed.
+#
+# `collectors`: watch ONLY the object types some dashboard/rule consumes. Drops (un-watched entirely):
+# leases, mutating/validatingwebhookconfigurations, poddisruptionbudgets, storageclasses,
+# volumeattachments, persistentvolumes, jobs, cronjobs, limitranges, resourcequotas, ...
+collectors:
+  - configmaps
+  - daemonsets
+  - deployments
+  - endpoints
+  - horizontalpodautoscalers
+  - ingresses
+  - namespaces
+  - networkpolicies
+  - nodes
+  - persistentvolumeclaims
+  - pods
+  - replicasets          # kept for the pod→replicaset→deployment owner-join chain
+  - secrets
+  - services
+  - statefulsets
+# `--metric-denylist`: universal high-card / zero-value families within the kept resources.
+#   kube_pod_tolerations (182 series), *_metadata_resource_version (pure churn), pod_status_*_time
+#   (timestamps), pod_spec_volumes_* , pod_ips. NOTE: not denylisting *_created (low-card, and
+#   kube_namespace_created IS consumed).
+extraArgs:
+  - --metric-denylist=kube_.+_metadata_resource_version,kube_pod_tolerations,kube_pod_status_.+_time,kube_pod_spec_volumes_.+,kube_pod_ips

@@ -286,9 +286,9 @@ apply → re-baseline." So trimming never becomes a silent blind spot.
 ## Per-job sweep tracker
 | job(s) | status | when |
 |--------|--------|------|
-| kubernetes-apiservers | ✅ apiserver_/etcd_ (06-10) + **node_authorizer_** (06-14, 150 series) dropped · ⚠️ `authentication_*`/`authorization_*` = **218** still escape → keep-list | follow-up |
+| kubernetes-apiservers | ✅ apiserver_/etcd_ (06-10) + **node_authorizer_** (06-14, 150 series) dropped · ⚠️ `authentication_*`/`authorization_*` (**218**) + `kube_apiserver_clusterip/nodeport_allocator_*` (**9**) still escape (kube_/authn prefixes) → keep-list | follow-up |
 | **prometheus-node-exporter** | ✅ **DONE 2026-06-14** (above) | T8 |
-| kube-state-metrics | ⬜ | T9 |
+| **kube-state-metrics** | ✅ **DONE 2026-06-14** — two-tier: KSM `--resources`(15 types)+`--metric-denylist` (tier-1, never generates) + SM `metricRelabelings` (tier-2, reversible); **4946→3461/target ~30%**; ruler deps (`kube_deployment_spec_replicas`/`kube_statefulset_replicas`) kept; `up`=1 | T9 |
 | kubernetes-nodes / -cadvisor (`container_*` = 12,999 — top firehose) | ⬜ · ⚠️ kubelet re-exposes `apiserver_*` = **136** (drop here) | cAdvisor/kubelet topic |
 | infra controllers (cert-manager, aws-lb-controller, webhook, cainjector) | ⬜ no dedicated topic | **T11** |
 | loki/* (12 jobs) | ⬜ | Phase 2 (Logs) |
