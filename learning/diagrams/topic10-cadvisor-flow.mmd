@@ -1,0 +1,7 @@
+%% cAdvisor: embedded in the kubelet, reads cgroups, scraped at :10250/metrics/cadvisor (Topic 10)
+%% Render: GitHub/VSCode mermaid preview, or mermaid.live
+flowchart LR
+  CG["kernel cgroups (v1/v2)<br/>per-container cpu/mem/io accounting"] --> CAD["cAdvisor<br/>(embedded IN the kubelet)"]
+  CAD --> EP["kubelet :10250 /metrics/cadvisor"]
+  EP -->|"scrape (per-node daemonset, direct HOST_IP:10250)"| DS["obsrv-metrics-new"]
+  DS --> MIM["Mimir -> Grafana"]

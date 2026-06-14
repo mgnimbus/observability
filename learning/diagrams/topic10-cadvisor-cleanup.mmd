@@ -1,0 +1,7 @@
+%% cAdvisor cleanup: metric_relabel_configs keep-list is the ONLY lever (no native knob) (Topic 10)
+%% Render: GitHub/VSCode mermaid preview, or mermaid.live
+flowchart TB
+  EMIT["cAdvisor ~12.7k container_* (kubelet built-in set)"] --> KL{"metric_relabel_configs KEEP-list<br/>(the ONLY lever)"}
+  KL -->|"keep"| KEEP["28 consumed + ruler<br/>(container_cpu_usage_seconds_total, container_memory_usage_bytes)"]
+  KL -->|"drop (default-deny)"| DROP["tasks_state 995 · memory_failures 796 · blkio 306 ·<br/>per-container cpu_load/system/memory_rss/cache/mapped/max/kernel/file_descriptors"]
+  KEEP --> R["post-relabel/target 6357 -> 1740 (~73%)"]
