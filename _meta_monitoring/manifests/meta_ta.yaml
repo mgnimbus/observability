@@ -105,6 +105,25 @@ spec:
             action: insert
             value: ${collector_id}
 
+      # Label dedup (2026-06-14): delete OTel RESOURCE attrs that the gateway's
+      # resource_to_telemetry_conversion would otherwise flatten into DUPLICATE labels. k8s_* duplicate
+      # the plain target labels (namespace/pod/node/container); server_*/url_scheme decompose `instance`.
+      # 0 dashboards/rules consume any of these (verified live). Done HERE (the meta collector), NOT the
+      # shared gateway, so other tenants' metrics keep their attrs and the hot path stays light.
+      # KEEP: service.* (otel_collector.json reads service_*), k8s_cluster_id + otel_collector_id (above).
+      resource:
+        attributes:
+          - { key: k8s.pod.name, action: delete }
+          - { key: k8s.namespace.name, action: delete }
+          - { key: k8s.node.name, action: delete }
+          - { key: k8s.container.name, action: delete }
+          - { key: k8s.pod.uid, action: delete }
+          - { key: k8s.daemonset.name, action: delete }
+          - { key: k8s.replicaset.name, action: delete }
+          - { key: server.address, action: delete }
+          - { key: server.port, action: delete }
+          - { key: url.scheme, action: delete }
+
       metricstransform:
         transforms:
           - include: ^exported_(.*)$$
@@ -138,5 +157,6 @@ spec:
       pipelines:
         metrics:
           receivers: [prometheus]
-          processors: [memory_limiter, attributes, metricstransform, batch]
+          processors:
+            [memory_limiter, attributes, resource, metricstransform, batch]
           exporters: [otlp]
