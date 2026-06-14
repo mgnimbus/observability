@@ -80,8 +80,11 @@ spec:
               tls_config:
                 ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
               metric_relabel_configs:
+                # node_authorizer_* is apiserver-sourced (the Node authorizer) but its node_ prefix
+                # dodges the apiserver_ match — include it explicitly. (authentication_/authorization_
+                # ~218 series also escape this drop; flip this job to a keep-list in the apiservers sweep.)
                 - source_labels: [__name__]
-                  regex: (apiserver|etcd)_.*
+                  regex: (apiserver|etcd|node_authorizer)_.*
                   action: drop
 
     processors:

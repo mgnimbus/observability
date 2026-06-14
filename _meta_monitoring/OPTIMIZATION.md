@@ -269,9 +269,14 @@ family **3862 → ~490** (settling past the 5-min staleness); cluster ingest **5
 `up==0` stayed **0** (no scrape broke); every dashboard-consumed metric retained. The default-deny
 allowlist is the **uniform template** to mirror for KSM/others.
 
-**Spillage found (for the apiservers sweep):** `node_authorizer_graph_actions_duration_seconds_*` is
-**apiserver-sourced** (Node authorizer) on the `kubernetes-apiservers` job — it escapes the
-`(apiserver|etcd)_.*` drop because of the `node_` prefix. Tighten that drop / add a keep-list.
+**Spillage — `node_authorizer_*` FIXED 2026-06-14.** `node_authorizer_graph_actions_duration_seconds_*`
+is **apiserver-sourced** (Node authorizer) on the `kubernetes-apiservers` job and escaped the
+`(apiserver|etcd)_.*` drop via the `node_` prefix — a **histogram → 150 series** (le buckets), not 3.
+Fix: drop regex → `(apiserver|etcd|node_authorizer)_.*` in `meta_ta.yaml`. Validated: no longer
+scraped (182 s stale), `up{job=kubernetes-apiservers}`=1, post-relabel 2675 → 2522.
+**Still open on that endpoint:** `authentication_*`+`authorization_*` = **218 series** also escape →
+flip the job to a keep-list (consumption-check first). And the kubelet (`kubernetes-nodes`) re-exposes
+`apiserver_*` = **136 series** — a *different* spillage, handle in the kubelet sweep.
 
 ## Generic note added (`meta_metrics.yaml` header)
 "Missing a metric/label? → port-forward node-exporter `:9100` (or kubelet `:10250`) to see the raw
@@ -281,10 +286,10 @@ apply → re-baseline." So trimming never becomes a silent blind spot.
 ## Per-job sweep tracker
 | job(s) | status | when |
 |--------|--------|------|
-| kubernetes-apiservers | ✅ apiserver_/etcd_ dropped (06-10) · ⚠️ `node_authorizer_*` spillage TODO | done + follow-up |
+| kubernetes-apiservers | ✅ apiserver_/etcd_ (06-10) + **node_authorizer_** (06-14, 150 series) dropped · ⚠️ `authentication_*`/`authorization_*` = **218** still escape → keep-list | follow-up |
 | **prometheus-node-exporter** | ✅ **DONE 2026-06-14** (above) | T8 |
 | kube-state-metrics | ⬜ | T9 |
-| kubernetes-nodes / -cadvisor (`container_*` = 12,999 — top firehose) | ⬜ | cAdvisor/kubelet topic |
+| kubernetes-nodes / -cadvisor (`container_*` = 12,999 — top firehose) | ⬜ · ⚠️ kubelet re-exposes `apiserver_*` = **136** (drop here) | cAdvisor/kubelet topic |
 | infra controllers (cert-manager, aws-lb-controller, webhook, cainjector) | ⬜ no dedicated topic | **T11** |
 | loki/* (12 jobs) | ⬜ | Phase 2 (Logs) |
 | grafana | ⬜ | T22 |
