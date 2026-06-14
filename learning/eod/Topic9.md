@@ -213,6 +213,20 @@ flowchart TB
 - **The get-it-back path** is documented in `meta_metrics.yaml` (port-forward the source → widen the
   helm) so the 200 teams self-serve.
 
+### Cleanup result (live, applied 2026-06-14 — `baseline-goldfish-ksm-{before,after}.txt`)
+| metric | before | after | Δ |
+|---|---|---|---|
+| KSM ingested (samples/target, post-relabel) | 4946 | **3461** | **−30%** |
+| `kube_*` family series | 4986 | **3501** | −1,485 |
+| cluster `samples_ingested` | 48,082 | 46,615 | −1,467 |
+
+Tier split (staleness-free `scrape_samples_*`): **tier-1** (`--resources`+`--metric-denylist`) cut
+*generation* 4946 → 4099; **tier-2** (SM `metricRelabelings`) cut *ingest* 4099 → 3461. Every dropped
+family verified **= 0** (`kube_pod_tolerations`, `kube_lease_*`, `kube_persistentvolume_*`,
+`kube_endpoint_address`, `kube_deployment_status_condition`, `kube_pod_status_ready`); ruler deps
+(`kube_deployment_spec_replicas`, `kube_statefulset_replicas`) + the 38 consumed families intact;
+`up{job=kube-state-metrics}` = 1; no silent no-op (`scraped` dropped → chart keys rendered).
+
 ---
 
 ## COMMON FAILURE MODES

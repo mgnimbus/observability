@@ -2,7 +2,7 @@
 
 > Companion to `Topic4.md`/`Topic5.md`/`Topic7.md`. Verbose by design — a self-contained lesson for
 > cold revision in the `Topic4.md` gold-standard shape.
-> **STATUS: TAUGHT 2026-06-13 — quiz + live testing PENDING (tomorrow, on the fresh daily cluster).**
+> **STATUS: MASTERED 2026-06-14 — quiz passed; cleanup applied + validated (see "Cleanup result").**
 > Built right after Topic 7 (Exporters), where node-exporter was the canonical *per-node DaemonSet*
 > exporter. This topic zooms into that one box.
 > The one idea to anchor everything: **node-exporter is the *translator for the Linux host* — a
@@ -278,6 +278,23 @@ flowchart TD
 
 ---
 
+## Cleanup result (applied 2026-06-14, baseline before → after — `baseline-goldfish-{before,after}.txt`)
+Applied via `_meta_monitoring/manifests/node-exporter-values.yaml`: disabled 16 collectors (12
+dead-on-EC2 `success=0` + xfs/sockstat/schedstat/softnet) · `--collector.filesystem.mount-points-exclude`
+(mounts **104→22**/node — killed kubelet pod-volume + containerd shm churn) ·
+`--collector.netdev.device-exclude` (devices **28→2**/node, keep eth0+lo) · a default-deny **allowlist**
+`metricRelabelings` (memory→7 fields; dropped the netstat/timex/network-metadata/filesystem-extras/
+go_*/process_* long tail).
+
+| metric | before | after | Δ |
+|---|---|---|---|
+| node-exporter ingested (samples/target) | 1906 | **246** | **−87%** |
+| `node_*` family series | 3862 | **642** (settling →~490) | −3,220 |
+| cluster `samples_ingested` | 52,775 | 48,071 | −4,704 |
+
+`up==0` stayed **0** (no scrape broke); every dashboard-consumed metric retained. (`distinct_names`
+2138→2148 is unrelated cluster churn/staleness, not this change.)
+
 ## Memorize (one-liners)
 - node-exporter is the **translator for the Linux host** — reads `/proc`+`/sys` **on each scrape**
   (read-on-scrape, no cache) and renders `/metrics` on **:9100**.
@@ -296,7 +313,7 @@ flowchart TD
 
 ---
 
-## Quiz — PENDING (to be taken LIVE tomorrow) ⏳
+## Quiz — PASSED 2026-06-14 ✅
 > Per convention, **Questions** and **Answer key** are separate so you can self-test cold. We'll run
 > these against the live cluster tomorrow (exercises above feed them). Brutal rules: no hints, from
 > memory, marked wrong out loud, mastery held until correct.
