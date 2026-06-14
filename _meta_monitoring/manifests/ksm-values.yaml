@@ -20,6 +20,11 @@ prometheus:
         - sourceLabels: [__name__]
           regex: 'kube_(deployment_status_condition|endpoint_address|endpoint_ports|pod_status_ready|pod_init_container_.+|node_status_addresses)'
           action: drop
+        # Drop the per-object `uid` LABEL (the described object's UID) — 0 PromQL uses, and it churns on
+        # every pod restart (new UID -> new series). Owner-joins use (namespace,pod) + kube_*_owner, not
+        # uid. labeldrop = remove the label, keep the metric. Tier-2 reversible (KSM still emits it at :8080).
+        - regex: uid
+          action: labeldrop
 # Drop KSM's `prometheus.io/scrape: "true"` so it leaves the annotation job — otherwise it's
 # double-scraped (SM + service-endpoints). NOTE: the KSM chart adds this via the TOP-LEVEL
 # `prometheusScrape` knob, NOT `service.annotations` (each chart differs: cert-manager uses

@@ -158,6 +158,17 @@ spec:
           - { key: server.address, action: delete }
           - { key: server.port, action: delete }
           - { key: url.scheme, action: delete }
+      # Drop the constant instrumentation-scope labels. The prometheus receiver stamps a default scope
+      # (otelcol/prometheusreceiver) on every scraped metric; the gateway PRW re-emits it as
+      # otel_scope_name/otel_scope_version (0 PromQL uses, constant on every series). Clearing it here
+      # makes PRW emit empty -> Mimir drops empty labels. (Scope isn't a resource attr.)
+      transform:
+        error_mode: ignore
+        metric_statements:
+          - context: scope
+            statements:
+              - set(name, "")
+              - set(version, "")
       metricstransform:
         transforms:
           - include: ^exported_(.*)$$
@@ -190,5 +201,5 @@ spec:
         metrics:
           receivers: [prometheus]
           processors:
-            [memory_limiter, attributes, resource, metricstransform, batch]
+            [memory_limiter, attributes, resource, transform, metricstransform, batch]
           exporters: [otlp]

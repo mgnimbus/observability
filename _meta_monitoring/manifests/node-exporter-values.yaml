@@ -10,6 +10,14 @@ service:
 prometheus:
   monitor:
     enabled: true
+    # Stage-1 (target-level) relabel: stamp the `node` identity onto every node_* series from the pod's
+    # host (node-exporter is a DaemonSet, so __meta_kubernetes_pod_node_name = the node). Replaces the
+    # deleted k8s_node_name and makes node-exporter UNIFORM with cAdvisor (which carries `node` via the
+    # daemonset's K8S_NODE_NAME insert) — node dashboards can roll up by `node` with no kube_pod_info join.
+    relabelings:
+      - sourceLabels: [__meta_kubernetes_pod_node_name]
+        targetLabel: node
+        action: replace
     # Stage-2 (per-sample) cardinality lever — chart-native, so it stays in this one values file.
     # ALLOWLIST (default-deny): keep ONLY the node_* metrics the k8s dashboards consume + a few
     # high-value incident signals (PSI pressure, oom_kill, pgmajfault, per-collector success,
