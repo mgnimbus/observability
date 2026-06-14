@@ -35,14 +35,10 @@ resource "helm_release" "node_exporter" {
   create_namespace = false
   namespace        = kubernetes_namespace.meta_monitoring.metadata[0].name
 
-  set {
-    name  = "service.annotations"
-    value = "null"
-  }
-  set {
-    name  = "prometheus.monitor.enabled"
-    value = "true"
-  }
+  # Uniform values-file pattern (matches kube_state_metrics above). De-annotation + ServiceMonitor +
+  # the Topic-8 collector/cardinality cleanup (dead/unconsumed collectors disabled, per-mount &
+  # per-eni excludes, unconsumed node_memory_* dropped) all live in this one file.
+  values = [file("${path.module}/manifests/node-exporter-values.yaml")]
 }
 
 # Node-local container-log tail -> Loki. Operator CR (was the Helm opentelemetry-collector chart),

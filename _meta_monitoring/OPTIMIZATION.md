@@ -240,6 +240,58 @@ source object/exporter doesn't exist):
 `meta_ta.yaml` now carries only `kubernetes-apiservers` + `kubernetes-pods` static jobs (the
 latter retired in Wave 5) plus the prometheusCR plane.
 
+---
+
+# Per-job optimization sweep — node-exporter DONE (2026-06-14, Topic 8 capstone)
+
+Approach (locked with user): optimize **one job per topic** as we progress — each job's cleanup is
+the applied capstone of its topic, not a big-bang sweep. One variable per change → clean baseline
+before/after → low blast radius. Cross-cutting **label** hygiene is the exception: horizontal (the
+gateway `resource_to_telemetry` flatten) → done once at **T14–17**, not per job.
+Cluster `meda-dev-goldfish-eksdemotest` · evidence `baseline-goldfish-{before,after}.txt`.
+RULE: **never run terraform plan/apply for the user** — hand them the `!`-prefixed command.
+
+## node-exporter — `manifests/node-exporter-values.yaml` (uniform values-file, wired in `main.tf`)
+Two passes, both chart-native (extraArgs + ServiceMonitor `metricRelabelings`, both honored by the TA):
+1. **Collector level (`extraArgs`):** disabled 12 dead-on-EC2 collectors (`success=0`: bcachefs,
+   bonding, fibrechannel, hwmon, infiniband, ipvs, kernel_hung, nfs, nfsd, rapl, tapestats, zfs) + 4
+   unconsumed (xfs, sockstat, schedstat, softnet). `filesystem.mount-points-exclude` kills the
+   kubelet pod-volume churn + containerd shm (**mounts/node 104 → 22**); `netdev.device-exclude`
+   drops VPC-CNI `eni*` (**devices/node 28 → 2**, keep eth0+lo).
+2. **Allowlist (`metricRelabelings`, default-deny):** keep ONLY ~40 dashboard-consumed + incident
+   signals (PSI, oom_kill, pgmajfault, scrape_collector_success, build/uname); drop the long tail
+   (node_netstat_* 44, node_timex_* 20, node_network_* metadata ~32, node_filesystem_* extras,
+   node_vmstat_* detail, and node-exporter's own go_*/process_*/promhttp_*). CPU: all 8 modes kept
+   (load-bearing on the `mode!~"idle|iowait|steal"` busy panel; ~4-series saving not worth skewing).
+
+**Result (live):** `scrape_samples_post_metric_relabeling`/target **1906 → 246 (~87%)**; `node_`
+family **3862 → ~490** (settling past the 5-min staleness); cluster ingest **52,775 → 48,071**;
+`up==0` stayed **0** (no scrape broke); every dashboard-consumed metric retained. The default-deny
+allowlist is the **uniform template** to mirror for KSM/others.
+
+**Spillage found (for the apiservers sweep):** `node_authorizer_graph_actions_duration_seconds_*` is
+**apiserver-sourced** (Node authorizer) on the `kubernetes-apiservers` job — it escapes the
+`(apiserver|etcd)_.*` drop because of the `node_` prefix. Tighten that drop / add a keep-list.
+
+## Generic note added (`meta_metrics.yaml` header)
+"Missing a metric/label? → port-forward node-exporter `:9100` (or kubelet `:10250`) to see the raw
+exposition, then widen the helm (drop a `--no-collector`, or relax `metricRelabelings`) → helm diff →
+apply → re-baseline." So trimming never becomes a silent blind spot.
+
+## Per-job sweep tracker
+| job(s) | status | when |
+|--------|--------|------|
+| kubernetes-apiservers | ✅ apiserver_/etcd_ dropped (06-10) · ⚠️ `node_authorizer_*` spillage TODO | done + follow-up |
+| **prometheus-node-exporter** | ✅ **DONE 2026-06-14** (above) | T8 |
+| kube-state-metrics | ⬜ | T9 |
+| kubernetes-nodes / -cadvisor (`container_*` = 12,999 — top firehose) | ⬜ | cAdvisor/kubelet topic |
+| infra controllers (cert-manager, aws-lb-controller, webhook, cainjector) | ⬜ no dedicated topic | **T11** |
+| loki/* (12 jobs) | ⬜ | Phase 2 (Logs) |
+| grafana | ⬜ | T22 |
+| collector self (otelcol_*: obsrv-ta/-logs/-events/-metrics-new) | ⬜ | T14–17 |
+| **gateway label dedup (horizontal — every job)** | ⬜ | **T14–17 (in depth)** |
+| mimir/* | ⚠️ NOT scraped on goldfish (`cortex_=0`, no mimir SMs) — investigate | T18 |
+
 ## Deferred — RESOLVED 2026-06-07 (staged, pending `terraform apply`)
 Both items are now fixed (staged). What was done:
 - **(c) apiserver RBAC:** added `nonResourceURLs: ["/metrics"]` / `verbs: ["get"]` to ClusterRole

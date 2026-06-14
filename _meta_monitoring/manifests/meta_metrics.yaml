@@ -1,3 +1,20 @@
+# ─────────────────────────────────────────────────────────────────────────────────────────────
+# GENERIC — capturing a metric/label you don't see in Mimir
+# This meta-monitoring pipeline deliberately TRIMS metrics/labels for low cardinality (no spillage),
+# so "it's missing" usually means "we trimmed it", not "it doesn't exist". Don't guess — confirm at
+# the SOURCE first, then widen the helm:
+#   1. See what the exporter actually exposes (raw, un-trimmed):
+#        # node-exporter (host/OS):
+#        kubectl -n meta-monitoring port-forward ds/node-exporter-prometheus-node-exporter 9100:9100
+#        curl -s localhost:9100/metrics | grep <name>
+#        # kubelet / cAdvisor (this collector): curl the node's :10250/metrics or /metrics/cadvisor
+#   2. If it's present at the source but absent in Mimir, it was trimmed. Re-enable in the component's
+#      helm values (e.g. manifests/node-exporter-values.yaml, manifests/ksm-values.yaml):
+#        • disabled collector  -> remove its `--no-collector.<x>` from extraArgs
+#        • dropped metric/label -> adjust `prometheus.monitor.metricRelabelings`
+#   3. helm diff -> apply -> re-baseline (./baseline.sh) -> confirm the series now appears.
+# Keep every collector UNIFORM: one values-file per component, label hygiene once at the gateway.
+# ─────────────────────────────────────────────────────────────────────────────────────────────
 apiVersion: opentelemetry.io/v1beta1
 kind: OpenTelemetryCollector
 metadata:

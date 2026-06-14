@@ -1,0 +1,55 @@
+# prometheus-node-exporter values — uniform with ksm-values.yaml (one values-file per component).
+# Topic 8 capstone cleanup (2026-06-14): disable collectors that are dead-on-EC2 or unconsumed, and
+# trim the per-pod-mount / per-eni-interface cardinality at the source. extraArgs is APPENDED by the
+# chart, so the host-path flags (--path.procfs/sysfs/rootfs) it renders are preserved.
+
+# Single prometheusCR discovery plane (obsrv-ta) scrapes via this ServiceMonitor; drop the chart's
+# default prometheus.io/scrape Service annotation so there is no double-scrape.
+service:
+  annotations: {}
+prometheus:
+  monitor:
+    enabled: true
+    # Stage-2 (per-sample) cardinality lever — chart-native, so it stays in this one values file.
+    # ALLOWLIST (default-deny): keep ONLY the node_* metrics the k8s dashboards consume + a few
+    # high-value incident signals (PSI pressure, oom_kill, pgmajfault, per-collector success,
+    # build/uname inventory). Everything else node-exporter exposes is dropped at scrape — the long
+    # tail of node_netstat_* (kept 1 of ~45), node_timex_* (2 of ~22), node_network_* metadata
+    # (kept 8 of ~40), node_filesystem_* extras, node_vmstat_* detail, and node-exporter's own
+    # go_*/process_*/promhttp_*. This default-deny shape is the UNIFORM pattern — mirror it per
+    # exporter. NOTE: `up` and `scrape_*` are synthesized AFTER metric_relabel, so target liveness is
+    # unaffected. CPU: all 8 modes kept on purpose — the bare query + `mode!~"idle|iowait|steal"`
+    # busy panel are load-bearing on every mode; pruning saves ~4 series and skews busy%.
+    metricRelabelings:
+      - sourceLabels: [__name__]
+        action: keep
+        regex: 'node_(cpu_seconds_total|cpu_core_throttles_total|memory_(MemTotal|MemFree|MemAvailable|Buffers|Cached|SwapTotal|SwapFree)_bytes|load(1|5|15)|disk_(read_bytes_total|written_bytes_total|reads_completed_total|writes_completed_total|io_now|io_time_seconds_total)|filesystem_(avail_bytes|size_bytes|files|files_free|device_error)|network_(receive|transmit)_(bytes|packets|drop|errs)_total|filefd_(allocated|maximum)|nf_conntrack_entries|nf_conntrack_entries_limit|netstat_Tcp_CurrEstab|time_seconds|timex_(estimated_error|maxerror)_seconds|boot_time_seconds|context_switches_total|intr_total|pressure_.+|vmstat_(oom_kill|pgmajfault)|uname_info|exporter_build_info|scrape_collector_success)'
+
+extraArgs:
+  # --- collectors reporting success=0 on EC2/Bottlerocket (emit zero series, still cost scrape time) ---
+  - --no-collector.bcachefs
+  - --no-collector.bonding
+  - --no-collector.fibrechannel
+  - --no-collector.hwmon
+  - --no-collector.infiniband
+  - --no-collector.ipvs
+  - --no-collector.kernel_hung
+  - --no-collector.nfs
+  - --no-collector.nfsd
+  - --no-collector.rapl
+  - --no-collector.tapestats
+  - --no-collector.zfs
+  # --- collectors with 0 dashboard/alert consumers (verified against _9_grafana_dashboards/) ---
+  - --no-collector.xfs
+  - --no-collector.sockstat
+  - --no-collector.schedstat
+  - --no-collector.softnet
+  # KEPT (do NOT add here): netstat + timex (1 dashboard each), pressure (PSI, 5 series, high SRE value),
+  # diskstats/netdev/filesystem/cpu/meminfo/loadavg/stat/vmstat/uname/filefd/os/time/textfile/conntrack.
+
+  # --- trim per-mount cardinality at the source: kill the kubelet pod-volume churn (~60/node) and
+  #     containerd sandbox shm (~30/node); real mounts (/, /var, /local, /boot, /mnt, /opt) are kept ---
+  - --collector.filesystem.mount-points-exclude=^/(run/containerd/.+|var/lib/kubelet/.+)($|/)
+
+  # --- trim per-interface cardinality: drop VPC-CNI eni* (and other CNI veths); keep eth0 + lo ---
+  - --collector.netdev.device-exclude=^(eni|veth|cali|cni|lxc|docker|flannel|nsm)[0-9a-z].*
