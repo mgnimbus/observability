@@ -143,3 +143,9 @@ Q3 — Histogram (the deep one). You record request latency as a histogram. What
 
 claude --resume d6c17d5b-1de5-440c-b31a-07a4d73869c6 meta-optimization
 claude --resume eb7d8f55-dcda-46fa-b5bd-0d4bdfa3c9e2 learning/eod
+
+● Read(/home/nimbus/.claude/projects/-home-nimbus-observability/memory/reference_label_source_stacking.md)
+Read 28 lines
+
+● Read(/home/nimbus/.claude/projects/-home-nimbus-observability/memory/reference_target_info_out_of_order.md)
+Read 31 lines

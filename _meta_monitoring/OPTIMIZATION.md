@@ -193,20 +193,28 @@ Notes that bit us, so they're recorded:
   de-annotating at source where the knob is ours (zero overlap window); lean on Wave 5 only for the
   EKS-managed `kube-dns`.
 
-## Fork: install the PodMonitor CRD? (recommended — resolves two blockers at once)
-`PodMonitor` CRD is **absent** today. That single fact:
-1. forces `kubernetes-pods`-annotation charts onto hand-authored SMs, and
-2. makes cert-manager's **chart-native** path (`prometheus.podmonitor.enabled`) unusable, and
-3. is **also** why `observability.metrics.enableMetrics` never produced the collectors' own `:8888`
-   self-telemetry SMs — the operator logs `prometheus-cr-availability: 0` and skips creation.
+## Fork: install the PodMonitor CRD? — ✅ RESOLVED (CRD is installed; live-verified 2026-06-14)
+> **Update 2026-06-14:** this fork is moot — the **PodMonitor CRD is now installed**
+> (`podmonitors.monitoring.coreos.com`, served as `pmon`, ships with the daily deploy) **and**
+> `podMonitorSelector: {}` is set on the statefulset TA (`meta_ta.yaml:23`). Both gates are open; a
+> PodMonitor authored today would be discovered + scraped. We still keep everything on SMs by choice.
+> The historical reasoning below is kept for context.
+
+(Historical) `PodMonitor` CRD was **absent**, and that single fact:
+1. forced `kubernetes-pods`-annotation charts onto hand-authored SMs, and
+2. made cert-manager's **chart-native** path (`prometheus.podmonitor.enabled`) unusable, and
+3. was **also** why `observability.metrics.enableMetrics` never produced the collectors' own `:8888`
+   self-telemetry SMs — the operator logged `prometheus-cr-availability: 0` and skipped creation.
 
 **Recommended:** install the PodMonitor CRD (`_1.3_crd` — there is a commented-out `pod_monitor`
 resource; add `pod-monitor.yaml`, `server_side_apply`). Then:
 - the operator auto-creates the `obsrv-ta` + `obsrv-metrics-new` self-telemetry SMs (closes the
   deferred item) — they land on the single statefulset plane;
 - cert-manager uses `prometheus.podmonitor.enabled: true`;
-- set **`podMonitorSelector: {}`** on the statefulset TA (it is currently unset, and a nil
-  selector selects *none*) so the new PodMonitors are actually discovered.
+- `podMonitorSelector: {}` on the statefulset TA is **already set explicitly** (`meta_ta.yaml:23`,
+  with the comment "absent podMonitorSelector selects NONE, so it must be set explicitly") — verified
+  live 2026-06-14. So **installing the CRD is the only remaining step**; a nil selector would select
+  *none*, but ours isn't nil.
 
 Alternative (no CRD): hand-author a ServiceMonitor for cert-manager (needs a metrics Service on
 `:9402` — newer charts don't ship one, which is *why* they moved to PodMonitor). Less clean; only

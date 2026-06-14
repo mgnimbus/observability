@@ -1,0 +1,22 @@
+flowchart TB
+  subgraph CLASSIC["Classic kube-prometheus-stack"]
+    direction TB
+    PO["Prometheus Operator<br/>CONTROLLER — touches NO samples"]
+    POCRD["CRDs: Prometheus, Alertmanager,<br/>ServiceMonitor, PodMonitor, PrometheusRule"]
+    PSRV["Prometheus StatefulSet<br/>(+ config-reloader sidecar)<br/>SD + scrape + TSDB + PromQL + ruler"]
+    PO -->|watches| POCRD
+    PO -->|generates config Secret<br/>+ manages lifecycle| PSRV
+  end
+
+  subgraph OURS["Our stack — disaggregated, NO Prometheus Operator, NO Prometheus server"]
+    direction TB
+    OO["OTel Operator<br/>CONTROLLER"]
+    CRD2["CRDs (subset only): ServiceMonitor,<br/>PodMonitor, ScrapeConfig"]
+    TA["Target Allocator<br/>SD + target sharding"]
+    COL["Collector prometheus receiver<br/>scrape + relabel"]
+    MIMIR["Mimir<br/>TSDB + PromQL + ruler"]
+    OO -->|reconciles Collector + TA CRs| TA
+    TA -->|watches| CRD2
+    TA -->|HTTP target list poll| COL
+    COL -->|remote_write / OTLP gRPC| MIMIR
+  end

@@ -6,8 +6,8 @@ not advance until the current topic is mastered.
 
 Legend: ⬜ not started · 🟡 in progress · ✅ mastered (quiz passed) · 🔁 needs review
 
-**Current focus:** Phase 1, deep-dive depth inline. **T7 Exporters, T8 node-exporter, T9 KSM all MASTERED 2026-06-14**, each with a live **cleanup capstone** (per-job cardinality optimization on the meta-monitoring stack — tracked in `_meta_monitoring/OPTIMIZATION.md`). **T10 cAdvisor (+kubelet) MASTERED 2026-06-14** (quiz passed; Q4 join deferred — see below); cleanup DONE (container_ firehose −73%, cluster ingest −9.3k). **T11 ServiceMonitor + T12 PodMonitor MASTERED 2026-06-14** (T12 quiz passed; live-verify caught two stale claims of mine — TA `podMonitorSelector` is already `{}` **and** the PodMonitor CRD **is installed**, so both gates are open; we run 0 PodMonitor *objects* purely by design). Cumulative sweep so far: cluster `samples_ingested` **52,775 → 37,315 (~29%)**.
-**Next up:** **T11 infra-controller cleanup sweep** (cert-manager/aws-lb-controller/webhook/cainjector SM `metricRelabelings`) — needs keyboard/apply (T11's deferred capstone; no separate T12 cleanup — PodMonitor is read-only here, 0 objects). Then **T13 Prometheus Operator**. **NEW deferred chapter — "PromQL & metric joins"** (`group_left`, owner-chain, the cАdvisor×KSM rollup — T10 Q4 deferred here by user request); slot it around the query-path/Grafana topics. (cAdvisor inserted as **T10** → ServiceMonitor=T11, PodMonitor=T12, Prometheus Operator=T13, rest +1.)
+**Current focus:** Phase 1, deep-dive depth inline. **T7 Exporters, T8 node-exporter, T9 KSM all MASTERED 2026-06-14**, each with a live **cleanup capstone** (per-job cardinality optimization on the meta-monitoring stack — tracked in `_meta_monitoring/OPTIMIZATION.md`). **T10 cAdvisor (+kubelet) MASTERED 2026-06-14** (quiz passed; Q4 join deferred — see below); cleanup DONE (container_ firehose −73%, cluster ingest −9.3k). **T11 ServiceMonitor + T12 PodMonitor + T13 Prometheus Operator MASTERED 2026-06-14** (T12: live-verify caught two stale claims of mine — TA `podMonitorSelector` is already `{}` **and** the PodMonitor CRD **is installed**, both gates open, 0 objects by design. T13: closed the Operator-vs-Prometheus-server conflation; grounded on the live no-Operator/no-server disaggregation). Cumulative sweep so far: cluster `samples_ingested` **52,775 → 37,315 (~29%)**.
+**Next up:** **T11 infra-controller cleanup sweep** (cert-manager/aws-lb-controller/webhook/cainjector SM `metricRelabelings`) — **ACTIVE NEXT** (T11's deferred capstone; needs keyboard/apply). Then **T14 OTel metrics**. **NEW deferred chapter — "PromQL & metric joins"** (`group_left`, owner-chain, the cАdvisor×KSM rollup — T10 Q4 deferred here by user request); slot it around the query-path/Grafana topics. (cAdvisor inserted as **T10** → ServiceMonitor=T11, PodMonitor=T12, Prometheus Operator=T13, OTel metrics=T14, rest +1; numbering fixed in the table below.)
 
 ---
 
@@ -44,23 +44,23 @@ scrape→WAL→Mimir→S3→Grafana (T28).
 | 10 | **cAdvisor (+kubelet)** | ✅ | pass | — | **MASTERED 2026-06-14; cleanup −73% (cadvisor 6357→1740/target).** Embedded in kubelet; cgroups→`container_*`; scraped `:10250/metrics/cadvisor` by the daemonset; #1 firehose + churn; join to KSM for node/workload rollup; **only lever = `metric_relabel_configs` keep-list** (no native knob). **Quiz: 4 Qs + answer key in eod/Topic10.md.** |
 | 11 | ServiceMonitor | ✅ | pass | P3·P5 | **MASTERED 2026-06-14** (Q3 two-stage relabel + Q4 VIP-load-balance corrected on retry); cleanup capstone (infra-controller SM sweep) pending @keyboard. CRD declaring scrape intent — NOT a scraper; consumed by the TA (vs classic Prometheus Operator); selects Services→Endpoints (per-pod, not VIP); `relabelings`=Stage1 (targets) / `metricRelabelings`=Stage2 (cardinality lever); #1 fail = 0 targets (selector/port-name/namespaceSelector). Infra-controller cleanup sweep lands here. (was T10; +1 after cAdvisor) |
 | 12 | PodMonitor | ✅ | pass | — | **MASTERED 2026-06-14.** SM minus the Service: `role: pod` (vs `endpoints`), selects **pods** by label, port = **container** port name (`portNumber` for unnamed), only `__meta_kubernetes_pod_*` survives (endpoints/service families vanish). **Separate CRD** (absent → apply rejected at admission) — but **installed in our cluster** (live-verified, ships each daily deploy); `podMonitorSelector` nil=none/`{}`=all (ours is `{}`, `meta_ta.yaml:23`). **Both gates open** → we run **0 PodMonitor *objects* by design** (mint a Service → SM-only, one discovery plane). Not-ready CrashLoop pod IS a target under both SM+PM (`up=0`); failing-to-start = KSM's job. see eod/Topic12.md. (was T11) |
-| 13 | Prometheus Operator | ⬜ | – | P3 | (was T12) |
-| 13 | OTel metrics | ⬜ | – | — | |
-| 14 | OTel Collector | ⬜ | – | — | |
-| 15 | Processors | ⬜ | – | — | |
-| 16 | Receivers | ⬜ | – | — | |
-| 17 | Exporters (OTel) | ⬜ | – | — | |
-| 18 | Mimir architecture | ⬜ | – | P7·P9 | |
-| 19 | remote_write | ⬜ | – | P8 | |
-| 20 | Multi-tenancy | ⬜ | – | P9 | |
-| 21 | Query path | ⬜ | – | P9 | |
-| 22 | Grafana dashboards | ⬜ | – | — | |
-| 23 | Recording rules | ⬜ | – | — | |
-| 24 | Alerting | ⬜ | – | — | |
-| 25 | Cardinality | ⬜ | – | — | |
-| 26 | Cost optimization | ⬜ | – | — | |
-| 27 | Scaling Mimir | ⬜ | – | — | |
-| 28 | Troubleshooting missing metrics | ⬜ | – | P10 | end-to-end capstone |
+| 13 | Prometheus Operator | ✅ | pass | P3 | **MASTERED 2026-06-14.** Controller, **NOT** a server/scraper/TSDB — input=CRDs, output=`prometheus.yaml` Secret + managed Prometheus StatefulSet (touches 0 samples). **CRD ≠ controller** (inert objects until a consumer reads them → why we have SM/PM CRDs with no Operator). Reconcile/reload = regenerate Secret → **config-reloader sidecar** `/-/reload`; our analog = **TA-served HTTP target list** + **collector receiver polling the TA**. Live: **no Operator, no Prometheus server**; OTel Operator runs; only a **3-CRD subset** (servicemonitors/podmonitors/scrapeconfigs). Disaggregation: Operator→OTel Operator, config-gen+SD→TA, scrape→collector, TSDB/PromQL/ruler→Mimir, PrometheusRule→Mimir ruler. see eod/Topic13.md. (was T12) |
+| 14 | OTel metrics | ⬜ | – | — | |
+| 15 | OTel Collector | ⬜ | – | — | |
+| 16 | Processors | ⬜ | – | — | |
+| 17 | Receivers | ⬜ | – | — | |
+| 18 | Exporters (OTel) | ⬜ | – | — | |
+| 19 | Mimir architecture | ⬜ | – | P7·P9 | |
+| 20 | remote_write | ⬜ | – | P8 | |
+| 21 | Multi-tenancy | ⬜ | – | P9 | |
+| 22 | Query path | ⬜ | – | P9 | |
+| 23 | Grafana dashboards | ⬜ | – | — | |
+| 24 | Recording rules | ⬜ | – | — | |
+| 25 | Alerting | ⬜ | – | — | |
+| 26 | Cardinality | ⬜ | – | — | |
+| 27 | Cost optimization | ⬜ | – | — | |
+| 28 | Scaling Mimir | ⬜ | – | — | |
+| 29 | Troubleshooting missing metrics | ⬜ | – | P10 | end-to-end capstone |
 
 ## Phase 2 — Logs   ⬜ (locked until Phase 1 complete)
 ## Phase 3 — Traces ⬜ (locked until Phase 2 complete)
@@ -134,6 +134,14 @@ scrape→WAL→Mimir→S3→Grafana (T28).
   `kubectl get podmonitor -A 2>/dev/null` had hidden the absent-vs-0-objects distinction). True state:
   both gates open, 0 PodMonitor objects by design. → **verify-live (`kubectl get crd`/`api-resources`,
   no stderr suppression) before asserting CRD/selector cluster state.**
+- 2026-06-14: T13 — **conflated the Prometheus Operator with the Prometheus server** (assessment: said
+  the Operator "does SD → scrape → storage"). Reality: the Operator is a **controller** that writes
+  `prometheus.yaml` (a Secret) + manages the Prometheus StatefulSet — it **touches no samples**;
+  scraping = the server's SD/retrieval, storage = the server's TSDB. Closed by quiz time. Also (Q3)
+  first gave the SD/scrape split instead of the **artifact (`prometheus.yaml` Secret) + reload trigger
+  (config-reloader sidecar `/-/reload`)** and their TA-stack analogs (TA-served HTTP target list +
+  collector receiver polling); and (Q4) said "TA down → list empty" — corrected to "keeps the **last
+  fetched** target list," parallel to Operator-down. Recovered all on retry.
 
 ## Quiz score history
 _(Claude appends: date · topic · result · the gap it revealed)_
@@ -189,3 +197,11 @@ _(Claude appends: date · topic · result · the gap it revealed)_
   the PodMonitor CRD **is installed** (not absent) — both gates open, 0 objects by design. Also closed
   the `serviceMonitorSelector: {}` = "all SM *objects*, not all Services" two-layer-selector confusion.
   see eod/Topic12.md.
+- 2026-06-14 · T13 Prometheus Operator · PASS · opened with the **Operator-vs-server conflation**
+  ("Operator does SD/scrape/storage") — fully corrected. **Recovered on retry:** Q3 (artifact =
+  `prometheus.yaml` Secret + reload = config-reloader sidecar `/-/reload`; analogs = TA HTTP target
+  list + collector receiver poll), Q4 TA-down half ("list empty" → keeps last fetched list, parallel
+  to Operator-down), Q5 second scale reason (Mimir S3/long-retention/multi-tenant/HA). Clean cold by
+  quiz on Q1 (Operator = controller, not server) + Q2 (CRD ≠ controller; inert objects). Grounded on
+  live disaggregation: no Operator, no Prometheus server, OTel Operator running, 3-CRD subset only.
+  see eod/Topic13.md.

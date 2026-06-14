@@ -21,6 +21,17 @@ rbac:
 
 serviceMonitor:
   enabled: true
+  # SM-sweep (2026-06-14): drop the unused histogram BUCKET series (the per-`le` explosion).
+  # 0 dashboards/rules consume aws_api_*/controller_runtime_*/workqueue_* (verified). Tier-2 /
+  # REVERSIBLE: we keep _sum + _count (so rate()/avg latency is still derivable) and every counter
+  # /gauge (reconcile_total, *_errors_total, aws_api_calls_total, workqueue_adds_total,
+  # rest_client_requests_total, active_workers, max_concurrent_reconciles, webhook_requests_in_flight).
+  # Effect: ~978 -> ~302 series/target (~69%). To give a team its histogram back: remove that family
+  # from the regex below and redeploy (chart-native, no KSM/exporter change).
+  metricRelabelings:
+    - sourceLabels: [__name__]
+      regex: (aws_api_request_duration_seconds|aws_api_call_duration_seconds|aws_api_call_retries|controller_runtime_reconcile_time_seconds|controller_runtime_webhook_latency_seconds|workqueue_work_duration_seconds|workqueue_queue_duration_seconds)_bucket
+      action: drop
 
 podSecurityContext:
   fsGroup: 65534
