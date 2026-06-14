@@ -6,8 +6,8 @@ not advance until the current topic is mastered.
 
 Legend: ⬜ not started · 🟡 in progress · ✅ mastered (quiz passed) · 🔁 needs review
 
-**Current focus:** Phase 1, deep-dive depth inline. **T7 Exporters, T8 node-exporter, T9 KSM all MASTERED 2026-06-14**, each with a live **cleanup capstone** (per-job cardinality optimization on the meta-monitoring stack — tracked in `_meta_monitoring/OPTIMIZATION.md`). **T10 cAdvisor (+kubelet) MASTERED 2026-06-14** (quiz passed; Q4 join deferred — see below); cleanup DONE (container_ firehose −73%, cluster ingest −9.3k). Cumulative sweep so far: cluster `samples_ingested` **52,775 → 37,315 (~29%)**.
-**Next up:** **T11 infra-controller cleanup sweep** (cert-manager/aws-lb-controller/webhook/cainjector SM `metricRelabelings`) — needs keyboard/apply; then **T12 PodMonitor**. **NEW deferred chapter — "PromQL & metric joins"** (`group_left`, owner-chain, the cАdvisor×KSM rollup — T10 Q4 deferred here by user request); slot it around the query-path/Grafana topics. (cAdvisor inserted as **T10** → ServiceMonitor=T11, PodMonitor=T12, Prometheus Operator=T13, rest +1.)
+**Current focus:** Phase 1, deep-dive depth inline. **T7 Exporters, T8 node-exporter, T9 KSM all MASTERED 2026-06-14**, each with a live **cleanup capstone** (per-job cardinality optimization on the meta-monitoring stack — tracked in `_meta_monitoring/OPTIMIZATION.md`). **T10 cAdvisor (+kubelet) MASTERED 2026-06-14** (quiz passed; Q4 join deferred — see below); cleanup DONE (container_ firehose −73%, cluster ingest −9.3k). **T11 ServiceMonitor + T12 PodMonitor MASTERED 2026-06-14** (T12 quiz passed; live-verify caught two stale claims of mine — TA `podMonitorSelector` is already `{}` **and** the PodMonitor CRD **is installed**, so both gates are open; we run 0 PodMonitor *objects* purely by design). Cumulative sweep so far: cluster `samples_ingested` **52,775 → 37,315 (~29%)**.
+**Next up:** **T11 infra-controller cleanup sweep** (cert-manager/aws-lb-controller/webhook/cainjector SM `metricRelabelings`) — needs keyboard/apply (T11's deferred capstone; no separate T12 cleanup — PodMonitor is read-only here, 0 objects). Then **T13 Prometheus Operator**. **NEW deferred chapter — "PromQL & metric joins"** (`group_left`, owner-chain, the cАdvisor×KSM rollup — T10 Q4 deferred here by user request); slot it around the query-path/Grafana topics. (cAdvisor inserted as **T10** → ServiceMonitor=T11, PodMonitor=T12, Prometheus Operator=T13, rest +1.)
 
 ---
 
@@ -43,7 +43,7 @@ scrape→WAL→Mimir→S3→Grafana (T28).
 | 9 | kube-state-metrics | ✅ | pass | P1 | **MASTERED 2026-06-14; cleanup −30% (4946→3461/target).** client-go **informers** (LIST→WATCH→cache; scrape renders from cache, 0 API calls); **info-metric join** `* on(ns,pod) group_left(node) kube_pod_info` (subject vs k8s_* labels); enum-expansion cardinality (pods×phases); `--metric-labels-allowlist` footgun; two-tier cleanup (`--resources`/`--metric-denylist` + SM relabel). see eod/Topic9.md |
 | 10 | **cAdvisor (+kubelet)** | ✅ | pass | — | **MASTERED 2026-06-14; cleanup −73% (cadvisor 6357→1740/target).** Embedded in kubelet; cgroups→`container_*`; scraped `:10250/metrics/cadvisor` by the daemonset; #1 firehose + churn; join to KSM for node/workload rollup; **only lever = `metric_relabel_configs` keep-list** (no native knob). **Quiz: 4 Qs + answer key in eod/Topic10.md.** |
 | 11 | ServiceMonitor | ✅ | pass | P3·P5 | **MASTERED 2026-06-14** (Q3 two-stage relabel + Q4 VIP-load-balance corrected on retry); cleanup capstone (infra-controller SM sweep) pending @keyboard. CRD declaring scrape intent — NOT a scraper; consumed by the TA (vs classic Prometheus Operator); selects Services→Endpoints (per-pod, not VIP); `relabelings`=Stage1 (targets) / `metricRelabelings`=Stage2 (cardinality lever); #1 fail = 0 targets (selector/port-name/namespaceSelector). Infra-controller cleanup sweep lands here. (was T10; +1 after cAdvisor) |
-| 12 | PodMonitor | ⬜ | – | — | (was T11) · infra-controller sweep slated here |
+| 12 | PodMonitor | ✅ | pass | — | **MASTERED 2026-06-14.** SM minus the Service: `role: pod` (vs `endpoints`), selects **pods** by label, port = **container** port name (`portNumber` for unnamed), only `__meta_kubernetes_pod_*` survives (endpoints/service families vanish). **Separate CRD** (absent → apply rejected at admission) — but **installed in our cluster** (live-verified, ships each daily deploy); `podMonitorSelector` nil=none/`{}`=all (ours is `{}`, `meta_ta.yaml:23`). **Both gates open** → we run **0 PodMonitor *objects* by design** (mint a Service → SM-only, one discovery plane). Not-ready CrashLoop pod IS a target under both SM+PM (`up=0`); failing-to-start = KSM's job. see eod/Topic12.md. (was T11) |
 | 13 | Prometheus Operator | ⬜ | – | P3 | (was T12) |
 | 13 | OTel metrics | ⬜ | – | — | |
 | 14 | OTel Collector | ⬜ | – | — | |
@@ -120,6 +120,20 @@ scrape→WAL→Mimir→S3→Grafana (T28).
   **`scrape_duration_seconds`** before correcting to **`pg_up`** as the subject-reachability gauge
   (scrape duration = how long the scrape took, not whether the exporter reached its subject).
   Recovered all on retry. → the missing teaching (KSM role + sharding) was added to `Topic7.md`.
+- 2026-06-14: T12 — **conflated the two selector layers.** Asked "if `serviceMonitorSelector: {}`
+  selects all, why is the TA only scraping KSM/Mimir/etc.?" Reality: `{}` selects all **ServiceMonitor
+  *objects*** (opt-in intent CRDs — 23 exist), **not** all Services; each SM then has its **own narrow
+  `selector`** picking specific Services. Two layers: TA→intent (`serviceMonitorSelector`) vs
+  SM→targets (the SM's own `selector`). What's scraped = union of all SMs' target selectors = "the
+  SM-enabled objects." Also Q1: twice missed `podMonitorSelector` as the 2nd discovery blocker
+  (conflated with Q3's `__meta_*` source-labels); recalled `{}` on the 3rd nudge. And Q5 factual slip:
+  said a CrashLooping pod has "no IP" — it **has** an IP (scrapeable as a not-ready endpoint, `up=0`);
+  the no-IP case is `Pending`/`ImagePullBackOff`. **Mentor self-corrections (×2, learner caught both):**
+  (i) I said the TA's `podMonitorSelector` is nil (stale `OPTIMIZATION.md`) — it's explicitly `{}`;
+  (ii) I said the PodMonitor CRD is absent ("apply rejected") — it's **installed** (live-verified; my
+  `kubectl get podmonitor -A 2>/dev/null` had hidden the absent-vs-0-objects distinction). True state:
+  both gates open, 0 PodMonitor objects by design. → **verify-live (`kubectl get crd`/`api-resources`,
+  no stderr suppression) before asserting CRD/selector cluster state.**
 
 ## Quiz score history
 _(Claude appends: date · topic · result · the gap it revealed)_
@@ -150,3 +164,28 @@ _(Claude appends: date · topic · result · the gap it revealed)_
   server; run 1 replica." Also `scrape_duration_seconds`→`pg_up` correction on Q3. Caught a real
   teaching gap ("you quizzed me on sharding without teaching it") → KSM/sharding deep-dive + Q5–Q6
   added to eod/Topic7.md. see eod/Topic7.md.
+- 2026-06-14 · T8 node-exporter · PASS · host/`/proc`+`/sys` read-on-scrape, DaemonSet blast-radius
+  1-node, counters kernel-resident (`node_boot_time_seconds` = pod-restart vs node-reboot tell), inner
+  liveness `node_scrape_collector_success`. Cleanup capstone applied: default-deny allowlist +
+  collector/fs/netdev trims → **1906→246 samples/target (~87%)**. see eod/Topic8.md.
+- 2026-06-14 · T9 kube-state-metrics · PASS · client-go informers (LIST→WATCH→cache; 0 API calls per
+  scrape), info-metric join `* on(ns,pod) group_left(node) kube_pod_info` (subject vs `k8s_*` labels),
+  enum-expansion cardinality, `--metric-labels-allowlist` footgun. Two-tier cleanup → **4946→3461/target
+  (~30%)**. see eod/Topic9.md.
+- 2026-06-14 · T10 cAdvisor (+kubelet) · PASS (Q4 join deferred to the "PromQL & joins" chapter) ·
+  embedded in kubelet, cgroups→`container_*`, scraped `:10250/metrics/cadvisor` by the daemonset, #1
+  firehose+churn (`id`/`container_id`/`image_id`), only lever = `metric_relabel_configs` keep-list (no
+  native knob). Cleanup → **cadvisor 6357→1740/target (~73%)**. see eod/Topic10.md.
+- 2026-06-14 · T11 ServiceMonitor · PASS · CRD = scrape *intent*, not a scraper; consumed by the TA;
+  selects Services→Endpoints (per-pod, not VIP); `relabelings`=Stage1 / `metricRelabelings`=Stage2;
+  #1 fail = 0 targets. **Corrected on retry:** Q3 two-stage relabel conflation (again — see T6) and
+  Q4 (claimed VIP churns on pod restart — VIP is stable, load-balances to one random backing pod).
+  Cleanup capstone (infra-controller SM sweep) pending @keyboard. see eod/Topic11.md.
+- 2026-06-14 · T12 PodMonitor · PASS · clean cold on port-name semantics (+`portNumber`), the
+  meta-label split (`role: pod` drops endpoints/service families), the mint-a-Service principle + its
+  cost, and KSM-not-scrape for failing-to-start pods. **Recall snags (not concept):** Q1's 2nd blocker
+  (`podMonitorSelector` nil-vs-`{}`, conflated with Q3 meta-labels) and a Q5 factual slip (CrashLoop
+  "no IP" → it has one). Live-verify corrected **two** stale claims of mine: TA is already `{}`, and
+  the PodMonitor CRD **is installed** (not absent) — both gates open, 0 objects by design. Also closed
+  the `serviceMonitorSelector: {}` = "all SM *objects*, not all Services" two-layer-selector confusion.
+  see eod/Topic12.md.

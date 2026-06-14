@@ -1,0 +1,21 @@
+flowchart TB
+  subgraph API["K8s API server (watched by the TA)"]
+    SVC["Service<br/>(stable ClusterIP)"]
+    EP["Endpoints / EndpointSlice<br/>(ready + notReady pod addrs)"]
+    P1["Pod A :8888"]
+    P2["Pod B :8888"]
+  end
+
+  SM["ServiceMonitor<br/>selector = Service labels<br/>role: endpoints<br/>port = SERVICE port name"]
+  PM["PodMonitor<br/>selector = Pod labels<br/>role: pod<br/>port = CONTAINER port name"]
+
+  SM -->|matches| SVC
+  SVC -->|walk endpoints| EP
+  EP -->|one target per addr| P1
+  EP -->|one target per addr| P2
+
+  PM -.->|matches pods DIRECTLY<br/>no Service object needed| P1
+  PM -.->|by container port name| P2
+
+  classDef gap fill:#fff3cd,stroke:#d39e00;
+  class PM gap;

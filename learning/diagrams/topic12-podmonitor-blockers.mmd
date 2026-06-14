@@ -1,0 +1,11 @@
+flowchart LR
+  A["kubectl apply<br/>kind: PodMonitor"] --> B{"PodMonitor CRD<br/>installed?"}
+  B -->|No| R1["REJECTED at admission<br/>no matches for kind PodMonitor"]
+  B -->|"Yes (our cluster)"| C{"TA podMonitorSelector<br/>selects it?"}
+  C -->|"nil / unset = NONE"| R2["0 targets, no error<br/>(silent)"]
+  C -->|"{} = ALL (our cluster), or label match"| OK["discovered then scraped<br/>(we author 0 objects, by design)"]
+
+  classDef bad fill:#f8d7da,stroke:#dc3545;
+  classDef good fill:#d4edda,stroke:#28a745;
+  class R1,R2 bad;
+  class OK good;
