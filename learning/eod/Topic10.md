@@ -194,7 +194,7 @@ resolves** (2 nodes); `up`=1 on both jobs. *(Cumulative across the sweep so far:
 
 ---
 
-## Quiz — answer from memory, then check the key
+## Quiz — PASSED 2026-06-14 ✅ (Q4 join deferred to the dedicated PromQL/joins chapter)
 
 ### Questions (self-test cold)
 1. **Where does cAdvisor run, and how do you scrape it?** Why is there no `--no-collector`-style knob
