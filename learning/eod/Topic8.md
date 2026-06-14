@@ -215,14 +215,14 @@ with `up=1`, an individual **collector** can fail. Its analog of `pg_up` is
 
 ```mermaid
 flowchart LR
-  SCR["Scraper"] -->|"GET /metrics → up=1"| NE["node-exporter"]
-  subgraph NE
+  SCR["Scraper"] -->|"GET /metrics → up=1"| H
+  subgraph NEBOX["node-exporter process"]
     H["/metrics handler"]
     C1["collector: cpu ✓"]
-    C2["collector: systemd ✗ (no dbus)"]
+    C2["collector: systemd ✗ — no dbus"]
     C3["collector: filesystem ✓"]
   end
-  NE -->|"per-collector inner liveness"| SUC["node_scrape_collector_success{collector}"]
+  NEBOX -->|"per-collector inner liveness"| SUC["node_scrape_collector_success{collector}"]
   SUC --> NOTE["up=1 but a metric family missing?<br/>check the failed collector, not the scrape."]
 ```
 
@@ -252,8 +252,8 @@ flowchart TD
   Q1 -->|Yes| Q2{"node_scrape_collector_success{collector} == 1 ?"}
   Q2 -->|No| B2["That collector errored or is disabled (dbus/sensors/RBAC). Fix or accept; not a scrape bug."]
   Q2 -->|Yes| Q3{"value plausible for the HOST?"}
-  Q3 -->|No (looks like the container)| B3["Missing host mounts / --path.* flags → measuring the pod, not the node."]
-  Q3 -->|Counter reset?| Q4{"node_boot_time_seconds changed?"}
+  Q3 -->|looks like the container| B3["Missing host mounts / --path.* flags → measuring the pod, not the node."]
+  Q3 -->|counter reset| Q4{"node_boot_time_seconds changed?"}
   Q4 -->|Yes| B4["Real node REBOOT (kernel counters zeroed)."]
   Q4 -->|No| B5["Pod restart only — /proc counters never reset; look elsewhere."]
   Q3 -->|Yes| OK["Host genuinely in that state."]

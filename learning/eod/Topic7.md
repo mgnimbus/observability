@@ -285,7 +285,7 @@ entire exporter-specific failure surface.
 
 ```mermaid
 flowchart LR
-  SCR["Scraper (OTel collector)"] -->|"GET /metrics — answers 'up'"| EXP
+  SCR["Scraper (OTel collector)"] -->|"GET /metrics = the up signal"| H
   subgraph EXP["EXPORTER process"]
     H["/metrics handler"]
     POLL["reads subject via native API"]
