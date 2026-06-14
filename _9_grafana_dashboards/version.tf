@@ -11,6 +11,10 @@ terraform {
       source  = "grafana/grafana"
       version = "~> 4.0"
     }
+    mimirtool = {
+      source  = "ovh/mimirtool"
+      version = "~> 1.0.0" # Use the latest suitable version
+    }
   }
 }
 
@@ -18,4 +22,9 @@ provider "grafana" {
   url = var.grafana_url
 
   auth = "${var.grafana_username}:${var.grafana_password}"
+}
+
+provider "mimirtool" {
+  address   = "http://localhost:9009"
+  tenant_id = "obsrv"
 }

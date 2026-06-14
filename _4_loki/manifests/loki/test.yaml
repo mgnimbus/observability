@@ -180,12 +180,12 @@ ingester:
       cpu: 50m
       memory: 128Mi
 querier:
-  replicas: 2
-  maxUnavailable: 2
+  replicas: 1
+  maxUnavailable: 1
   resources:
     limits:
       cpu: 50m
-      memory: 512Mi
+      memory: 1Gi
     requests:
       cpu: 50m
       memory: 128Mi
@@ -200,7 +200,7 @@ queryFrontend:
       cpu: 50m
       memory: 128Mi
 queryScheduler:
-  replicas: 2
+  replicas: 1
   resources:
     limits:
       cpu: 50m
@@ -209,8 +209,8 @@ queryScheduler:
       cpu: 50m
       memory: 128Mi
 distributor:
-  replicas: 2
-  maxUnavailable: 2
+  replicas: 1
+  maxUnavailable: 1
   resources:
     limits:
       cpu: 50m

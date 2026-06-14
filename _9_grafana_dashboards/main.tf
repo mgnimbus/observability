@@ -14,6 +14,7 @@ locals {
       path   = "${local.dashboard_root}/${f}"
     }
   }
+  # rule_files = fileset("${path.module}/rules", "*.yaml")
 }
 
 resource "grafana_folder" "folder" {
@@ -33,3 +34,13 @@ resource "grafana_dashboard" "dashboard" {
 
   overwrite = true
 }
+
+# # Deploy to the Mimir Ruler
+# resource "mimirtool_ruler_namespace" "lgtm_rules" {
+#   for_each = local.rule_files
+
+#   # Uses the filename (without .yaml) as the namespace group in Mimir
+#   # e.g., "tempo-recording-rules"
+#   namespace   = replace(each.value, ".yaml", "")
+#   config_yaml = file("${path.module}/rules/${each.value}")
+# }
