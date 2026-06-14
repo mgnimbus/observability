@@ -90,6 +90,13 @@ spec:
               metrics_path: /metrics
               static_configs:
                 - targets: ["$${env:HOST_IP}:10250"]
+              # Drop the apiserver_* (~136 series) the kubelet re-exposes as an API client (escapes the
+              # apiservers-job drop; not consumed here). Keep the rest of the kubelet set (volume_stats,
+              # runtime ops, ...) for now — a focused kubelet keep-list is a later pass.
+              metric_relabel_configs:
+                - source_labels: [__name__]
+                  regex: apiserver_.*
+                  action: drop
 
             - job_name: kubernetes-nodes-cadvisor
               bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
@@ -100,6 +107,18 @@ spec:
               metrics_path: /metrics/cadvisor
               static_configs:
                 - targets: ["$${env:HOST_IP}:10250"]
+              # cAdvisor has NO native knob (it's the kubelet's built-in set) -> metric_relabel_configs
+              # is the ONLY lever. Default-deny KEEP-list: keep the dashboard-consumed container_* +
+              # ruler (container_cpu_usage_seconds_total, container_memory_usage_bytes) + machine_*
+              # capacity; drop the firehose (container_tasks_state ~995, container_memory_failures_total
+              # ~796, container_blkio_device_usage_total ~306, and the per-container cpu_load/system/
+              # memory_rss/cache/mapped/max/kernel/file_descriptors ~199 each). ~12.7k container_ series
+              # -> the consumed core. (container_status_*/resource_*/info are recording-rule refs, not
+              # cAdvisor-emitted, so they're unaffected.)
+              metric_relabel_configs:
+                - source_labels: [__name__]
+                  regex: container_(cpu_usage_seconds_total|cpu_cfs_throttled_seconds_total|memory_working_set_bytes|memory_usage_bytes|network_(receive|transmit)_(bytes|errors|packets|packets_dropped)_total|fs_writes_bytes_total|oom_events_total|spec_cpu_(period|quota)|spec_memory_limit_bytes|log_filesystem_used_bytes)|machine_(cpu_cores|memory_bytes)
+                  action: keep
 
     processors:
       memory_limiter:
