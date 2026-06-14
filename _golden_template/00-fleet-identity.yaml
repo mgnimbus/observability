@@ -1,0 +1,27 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: observability
+---
+# The telemetry plane must not be first in line for eviction under node pressure — that's a
+# blackout exactly when the data matters. Below system-node-critical (CNI/kube-proxy keep priority).
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: otel-collector-priority
+value: 1000000
+globalDefault: false
+description: "OTel golden-template collectors — evict ordinary workloads before the telemetry plane."
+---
+# THE ONLY PER-CLUSTER FILE. Every other manifest in this directory is byte-identical across the
+# fleet. CI/CD (ArgoCD app-of-apps / applicationset) stamps these two values per cluster; the
+# collectors read them as env vars and expand `${env:CLUSTER_NAME}` / `${env:ORG_ID}` natively —
+# no Helm/Kustomize templating layer.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: fleet-identity
+  namespace: observability
+data:
+  CLUSTER_NAME: "REPLACE_ME-cluster-name" # e.g. meda-dev-gnat-eksdemotest
+  ORG_ID: "REPLACE_ME-org-id" # X-Scope-OrgId tenant, e.g. obsrv

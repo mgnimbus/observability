@@ -1,0 +1,163 @@
+# Tier 1 — node-local metrics (DaemonSet)
+# Scrapes THIS node's kubelet (/metrics) and cAdvisor (/metrics/cadvisor) directly on :10250,
+# completely bypassing the EKS API-server proxy: at 200 clusters × up to 200 nodes, proxying every
+# kubelet scrape through the control plane is an API-throttling incident waiting to happen.
+apiVersion: opentelemetry.io/v1beta1
+kind: OpenTelemetryCollector
+metadata:
+  name: otel-node-metrics
+  namespace: observability
+  annotations:
+    argocd.argoproj.io/sync-wave: "1" # after namespace/RBAC/identity (wave 0)
+spec:
+  mode: daemonset
+  nodeSelector:
+    kubernetes.io/os: linux # mixed fleets: a linux DS pod on an EKS Windows node group crash-loops
+  priorityClassName: otel-collector-priority
+  # Default DS rollout is maxUnavailable=1 — 200 serial pod restarts on a 200-node cluster.
+  updateStrategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 10%
+  observability:
+    metrics:
+      enableMetrics: true
+      disablePrometheusAnnotations: true
+  image: otel/opentelemetry-collector-contrib:0.152.0
+  serviceAccount: otel-node-metrics
+  # Target Allocator explicitly disabled — a daemonset shards naturally by node; each pod owns
+  # exactly its own kubelet. TA here would only add a component to fail.
+  targetAllocator:
+    enabled: false
+  resources:
+    requests:
+      cpu: 50m
+      memory: 500Mi
+    limits:
+      cpu: 1
+      memory: 2Gi
+  env:
+    - name: GOMEMLIMIT
+      value: "1600MiB" # ~80% of the 2Gi pod limit — soft GC ceiling before the limiter/OOM
+    - name: K8S_NODE_NAME
+      valueFrom:
+        fieldRef:
+          fieldPath: spec.nodeName
+    - name: HOST_IP # Downward API — the node's IP, so the scrape never touches the API server
+      valueFrom:
+        fieldRef:
+          fieldPath: status.hostIP
+    - name: CLUSTER_NAME
+      valueFrom:
+        configMapKeyRef:
+          name: fleet-identity
+          key: CLUSTER_NAME
+    - name: ORG_ID
+      valueFrom:
+        configMapKeyRef:
+          name: fleet-identity
+          key: ORG_ID
+  tolerations:
+    - effect: NoSchedule
+      operator: Exists
+  config:
+    extensions:
+      health_check:
+        endpoint: 0.0.0.0:13133 # explicit: the component default is localhost, which kubelet probes can't reach
+
+    receivers:
+      prometheus:
+        config:
+          global:
+            scrape_interval: 60s
+            scrape_timeout: 10s
+            # Anti-explosion guardrails: a pathological exposition fails ITS scrape (up=0, alertable)
+            # instead of melting the shared pipeline. Sized above the largest legitimate target
+            # (cAdvisor on a packed node), far below meltdown.
+            sample_limit: 300000
+            label_limit: 60
+            label_name_length_limit: 200
+            label_value_length_limit: 2000
+            body_size_limit: 50MB
+          scrape_configs:
+            # Static target = this node's kubelet. No `role: node` SD: that would make every
+            # daemonset pod watch ALL nodes (N×N watches per cluster, ×200 clusters). No node-label
+            # `labelmap` either — it stamps every node label onto every kubelet/cadvisor series
+            # (large cardinality); node identity is added once by the attributes processor below.
+            - job_name: kubernetes-nodes
+              bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+              scheme: https
+              tls_config:
+                ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+                insecure_skip_verify: true # kubelet serves a node-scoped self-signed cert
+              metrics_path: /metrics
+              static_configs:
+                - targets: ["${env:HOST_IP}:10250"]
+
+            - job_name: kubernetes-nodes-cadvisor
+              bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+              scheme: https
+              tls_config:
+                ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+                insecure_skip_verify: true
+              metrics_path: /metrics/cadvisor
+              static_configs:
+                - targets: ["${env:HOST_IP}:10250"]
+
+    processors:
+      memory_limiter:
+        check_interval: 1s
+        limit_mib: 1500
+        spike_limit_mib: 300
+      attributes:
+        actions:
+          - key: k8s.cluster.id
+            value: "${env:CLUSTER_NAME}"
+            action: insert
+          # node identity (replaces the dropped node-label labelmap — just the name, low cardinality)
+          - key: node
+            value: "${env:K8S_NODE_NAME}"
+            action: insert
+          - key: otel.collector.id
+            value: otel-node-metrics
+            action: insert
+      metricstransform:
+        transforms:
+          - include: ^exported_(.*)$
+            match_type: regexp
+            action: update
+            # $${1} — the collector's config resolver unescapes $$ -> $, so the component
+            # receives the regexp group reference ${1}. A bare ${1} fails config resolution.
+            new_name: $${1}
+      batch:
+        send_batch_size: 1000
+        send_batch_max_size: 1000
+        timeout: 1s
+
+    exporters:
+      otlp:
+        endpoint: "https://otel.gowthamvandana.com:443"
+        tls:
+          insecure: false
+          # To pin an internal CA instead of system roots: mount the CA secret and uncomment.
+          # ca_file: /etc/otel/certs/ca.crt
+        headers:
+          X-Scope-OrgId: "${env:ORG_ID}"
+        compression: snappy
+
+    service:
+      extensions: [health_check]
+      telemetry:
+        # Distinct service.name -> distinct `job` on the :8888 self-telemetry (the OTel prometheus
+        # receiver maps service.name->job; the default `otelcol-contrib` collapses every collector).
+        resource:
+          service.name: otel-node-metrics
+        metrics:
+          level: normal
+        logs:
+          level: error
+      pipelines:
+        metrics:
+          receivers: [prometheus]
+          processors: [memory_limiter, attributes, metricstransform, batch]
+          exporters: [otlp]

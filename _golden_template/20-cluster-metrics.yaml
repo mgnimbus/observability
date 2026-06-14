@@ -1,0 +1,152 @@
+# Tier 2 — cluster-wide app metrics (StatefulSet + Target Allocator)
+# One scrape plane for everything that is NOT node-local: ServiceMonitors, PodMonitors, and the
+# kube-apiserver. The Target Allocator shards the discovered targets across the statefulset
+# replicas (consistent hashing), and the HPA grows the replica set 2→10 with cluster size.
+apiVersion: opentelemetry.io/v1beta1
+kind: OpenTelemetryCollector
+metadata:
+  name: otel-cluster-metrics
+  namespace: observability
+  annotations:
+    argocd.argoproj.io/sync-wave: "1" # after namespace/RBAC/identity (wave 0)
+spec:
+  mode: statefulset # TA sharding requires stable pod identity — must be statefulset
+  nodeSelector:
+    kubernetes.io/os: linux
+  priorityClassName: otel-collector-priority
+  observability:
+    metrics:
+      enableMetrics: true
+      disablePrometheusAnnotations: true
+  image: otel/opentelemetry-collector-contrib:0.152.0
+  serviceAccount: otel-cluster-metrics
+  targetAllocator:
+    enabled: true
+    image: ghcr.io/open-telemetry/opentelemetry-operator/target-allocator:0.152.0
+    replicas: 1
+    serviceAccount: otel-cluster-metrics
+    prometheusCR:
+      enabled: true
+      # Match-all: any team's ServiceMonitor/PodMonitor in the cluster is picked up. NOTE: an
+      # absent podMonitorSelector selects NONE — `{}` is required, it is not the default.
+      serviceMonitorSelector: {}
+      podMonitorSelector: {}
+  resources:
+    requests:
+      cpu: 100m
+      memory: 750Mi
+    limits:
+      cpu: 1
+      memory: 5Gi
+  # Spec'd fleet HPA: shard out before a big cluster's target set OOMs a single replica.
+  autoscaler:
+    minReplicas: 2
+    maxReplicas: 10
+    targetCPUUtilization: 75
+    targetMemoryUtilization: 75
+  env:
+    - name: GOMEMLIMIT
+      value: "4250MiB" # ~80% of the 5Gi pod limit
+    - name: CLUSTER_NAME
+      valueFrom:
+        configMapKeyRef:
+          name: fleet-identity
+          key: CLUSTER_NAME
+    - name: ORG_ID
+      valueFrom:
+        configMapKeyRef:
+          name: fleet-identity
+          key: ORG_ID
+  config:
+    extensions:
+      health_check:
+        endpoint: 0.0.0.0:13133 # explicit: the component default is localhost, which kubelet probes can't reach
+
+    receivers:
+      prometheus:
+        config:
+          global:
+            scrape_interval: 60s
+            scrape_timeout: 10s
+            # Anti-explosion guardrails for a MATCH-ALL discovery plane: any team's ServiceMonitor
+            # is auto-scraped, so one pathological /metrics must fail ITS OWN scrape (up=0,
+            # alertable) — never melt the shared pipeline. Applies as the default for every
+            # TA-assigned job that doesn't set stricter per-SM limits. Ceiling sized above the
+            # largest legitimate target (kube-state-metrics on a 200-node cluster).
+            sample_limit: 300000
+            label_limit: 60
+            label_name_length_limit: 200
+            label_value_length_limit: 2000
+            body_size_limit: 50MB
+          scrape_configs:
+            - job_name: kubernetes-apiservers
+              bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+              kubernetes_sd_configs:
+                - role: endpoints
+              relabel_configs:
+                - action: keep
+                  regex: default;kubernetes;https
+                  source_labels:
+                    - __meta_kubernetes_namespace
+                    - __meta_kubernetes_service_name
+                    - __meta_kubernetes_endpoint_port_name
+              scheme: https
+              tls_config:
+                ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+              metric_relabel_configs:
+                # apiserver_/etcd_ histograms are the single largest cardinality source on EKS and
+                # the control plane is AWS-managed anyway — drop at the scrape, never ingest.
+                - source_labels: [__name__]
+                  regex: (apiserver|etcd)_.*
+                  action: drop
+
+    processors:
+      memory_limiter:
+        check_interval: 1s
+        limit_mib: 4250
+        spike_limit_mib: 850
+      attributes:
+        actions:
+          - key: k8s.cluster.id
+            value: "${env:CLUSTER_NAME}"
+            action: insert
+          - key: otel.collector.id
+            value: otel-cluster-metrics
+            action: insert
+      metricstransform:
+        transforms:
+          - include: ^exported_(.*)$
+            match_type: regexp
+            action: update
+            # $${1} — the collector's config resolver unescapes $$ -> $, so the component
+            # receives the regexp group reference ${1}. A bare ${1} fails config resolution.
+            new_name: $${1}
+      batch:
+        send_batch_size: 1000
+        send_batch_max_size: 1000
+        timeout: 1s
+
+    exporters:
+      otlp:
+        endpoint: "https://otel.gowthamvandana.com:443"
+        tls:
+          insecure: false
+          # ca_file: /etc/otel/certs/ca.crt
+        headers:
+          X-Scope-OrgId: "${env:ORG_ID}"
+        compression: snappy
+
+    service:
+      extensions: [health_check]
+      telemetry:
+        resource:
+          service.name: otel-cluster-metrics
+        metrics:
+          level: normal
+        logs:
+          level: error
+      pipelines:
+        metrics:
+          receivers: [prometheus]
+          processors: [memory_limiter, attributes, metricstransform, batch]
+          exporters: [otlp]

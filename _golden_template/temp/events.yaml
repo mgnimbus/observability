@@ -1,0 +1,76 @@
+apiVersion: opentelemetry.io/v1beta1
+kind: OpenTelemetryCollector
+metadata:
+  name: tier4-events
+  namespace: observability
+spec:
+  mode: deployment
+  replicas: 1 # exactly one → zero event duplication
+  image: otel/opentelemetry-collector-contrib:0.154.0
+  serviceAccount: otel-tier4-events
+  deploymentUpdateStrategy:
+    type: Recreate # kill old pod before new → no overlap during upgrade
+  resources:
+    requests: { cpu: 50m, memory: 128Mi }
+    limits: { cpu: 200m, memory: 256Mi }
+  env:
+    - name: CLUSTER_NAME
+      value: "PLACEHOLDER_CLUSTER_NAME"
+    - name: ORG_ID
+      value: "PLACEHOLDER_ORG_ID"
+    - name: GOMEMLIMIT
+      value: "200MiB" # ~80% of 256Mi
+  config:
+    receivers:
+      k8s_events:
+        auth_type: serviceAccount
+        # namespaces omitted → watch all namespaces
+    processors:
+      memory_limiter:
+        check_interval: 1s
+        limit_mib: 220
+        spike_limit_mib: 40
+      resourcedetection:
+        detectors: [env, eks, ec2]
+        timeout: 5s
+        override: false
+        eks:
+          resource_attributes:
+            k8s.cluster.name: { enabled: true }
+      resource:
+        attributes:
+          - {
+              key: k8s.cluster.id,
+              value: "${env:CLUSTER_NAME}",
+              action: upsert,
+            }
+          - {
+              key: k8s.cluster.name,
+              value: "${env:CLUSTER_NAME}",
+              action: upsert,
+            }
+      batch:
+        send_batch_size: 1024
+        timeout: 10s
+    exporters:
+      otlphttp:
+        endpoint: https://otel.gowthamvandana.com:443
+        compression: snappy
+        headers:
+          X-Scope-OrgID: "${env:ORG_ID}"
+        retry_on_failure:
+          {
+            enabled: true,
+            initial_interval: 5s,
+            max_interval: 30s,
+            max_elapsed_time: 300s,
+          }
+        sending_queue: { enabled: true, num_consumers: 2, queue_size: 1000 }
+    service:
+      telemetry:
+        metrics: { level: basic }
+      pipelines:
+        logs: # k8s_events emits log records
+          receivers: [k8s_events]
+          processors: [memory_limiter, resourcedetection, resource, batch]
+          exporters: [otlphttp]

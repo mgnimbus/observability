@@ -1,0 +1,120 @@
+apiVersion: opentelemetry.io/v1beta1
+kind: OpenTelemetryCollector
+metadata:
+  name: tier1-nodemetrics
+  namespace: observability
+spec:
+  mode: daemonset
+  image: otel/opentelemetry-collector-contrib:0.154.0
+  serviceAccount: otel-tier1-nodemetrics
+  resources:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits: { cpu: 500m, memory: 512Mi }
+  env:
+    - name: HOST_IP
+      valueFrom: { fieldRef: { fieldPath: status.hostIP } }
+    - name: K8S_NODE_NAME
+      valueFrom: { fieldRef: { fieldPath: spec.nodeName } }
+    - name: CLUSTER_NAME
+      value: "PLACEHOLDER_CLUSTER_NAME"
+    - name: ORG_ID
+      value: "PLACEHOLDER_ORG_ID"
+    - name: GOMEMLIMIT
+      value: "410MiB" # 80% of 512Mi limit
+  tolerations:
+    - operator: Exists # run on every node, including tainted/control-plane
+  config:
+    receivers:
+      prometheus:
+        config:
+          scrape_configs:
+            - job_name: kubelet
+              scheme: https
+              scrape_interval: 30s
+              metrics_path: /metrics
+              tls_config:
+                insecure_skip_verify: true
+              authorization:
+                type: Bearer
+                credentials_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+              static_configs:
+                - targets: ["${env:HOST_IP}:10250"]
+              metric_relabel_configs:
+                - source_labels: [__name__]
+                  regex: "go_.*|process_.*"
+                  action: drop
+            - job_name: cadvisor
+              scheme: https
+              scrape_interval: 30s
+              metrics_path: /metrics/cadvisor
+              tls_config:
+                insecure_skip_verify: true
+              authorization:
+                type: Bearer
+                credentials_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+              static_configs:
+                - targets: ["${env:HOST_IP}:10250"]
+              metric_relabel_configs:
+                # Drop high-cardinality per-device / per-interface series (tunable)
+                - source_labels: [__name__]
+                  regex: "container_network_tcp_usage_total|container_network_udp_usage_total|container_tasks_state|container_memory_failures_total"
+                  action: drop
+                # Drop cAdvisor series with empty pod/container (machine-level dupes)
+                - source_labels: [pod]
+                  regex: ""
+                  action: drop
+    processors:
+      memory_limiter:
+        check_interval: 1s
+        limit_mib: 450 # ~88% of 512Mi; below GOMEMLIMIT-equivalent headroom
+        spike_limit_mib: 90
+      resourcedetection:
+        detectors: [env, eks, ec2]
+        timeout: 5s
+        override: false
+        eks:
+          resource_attributes:
+            k8s.cluster.name: { enabled: true } # disabled by default in EKS detector
+      resource:
+        attributes:
+          - {
+              key: k8s.cluster.id,
+              value: "${env:CLUSTER_NAME}",
+              action: upsert,
+            }
+          - {
+              key: k8s.cluster.name,
+              value: "${env:CLUSTER_NAME}",
+              action: upsert,
+            }
+          - {
+              key: k8s.node.name,
+              value: "${env:K8S_NODE_NAME}",
+              action: upsert,
+            }
+      batch:
+        send_batch_size: 8192
+        send_batch_max_size: 10000
+        timeout: 10s
+    exporters:
+      otlphttp:
+        endpoint: https://otel.gowthamvandana.com:443
+        compression: snappy
+        headers:
+          X-Scope-OrgID: "${env:ORG_ID}"
+        retry_on_failure:
+          {
+            enabled: true,
+            initial_interval: 5s,
+            max_interval: 30s,
+            max_elapsed_time: 300s,
+          }
+        sending_queue: { enabled: true, num_consumers: 4, queue_size: 1000 }
+    service:
+      telemetry:
+        metrics: { level: basic }
+      pipelines:
+        metrics:
+          receivers: [prometheus]
+          processors: [memory_limiter, resourcedetection, resource, batch]
+          exporters: [otlphttp]

@@ -1,0 +1,150 @@
+# Least-privilege RBAC, one ServiceAccount per tier. Split deliberately: a compromised log
+# collector must not be able to enumerate ServiceMonitors, and the events singleton must not be
+# able to read pod specs.
+---
+# ---------------------------------------------------------------------------------------------
+# Tier 1 — node-local metrics (daemonset). Direct kubelet :10250 scrape: the kubelet authorizes
+# the request via SubjectAccessReview against the `nodes/metrics` subresource with verb `get`.
+# Without this, the scrape gets 403 even with insecure_skip_verify (TLS != authz).
+# ---------------------------------------------------------------------------------------------
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: otel-node-metrics
+  namespace: observability
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: otel-node-metrics
+rules:
+  - apiGroups: [""]
+    resources: ["nodes/metrics"]
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: otel-node-metrics
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: otel-node-metrics
+subjects:
+  - kind: ServiceAccount
+    name: otel-node-metrics
+    namespace: observability
+---
+# ---------------------------------------------------------------------------------------------
+# Tier 2 — cluster-wide app metrics (statefulset + Target Allocator). The TA watches the
+# monitoring.coreos.com CRs and the discovery objects they resolve to; the collector scrapes the
+# apiserver /metrics non-resource endpoint with this SA's bearer token. TA and collector share
+# the SA (same pattern as the proven _meta_monitoring deployment).
+# ---------------------------------------------------------------------------------------------
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: otel-cluster-metrics
+  namespace: observability
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: otel-cluster-metrics
+rules:
+  - apiGroups: [""]
+    resources:
+      ["pods", "nodes", "endpoints", "services", "namespaces"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["discovery.k8s.io"]
+    resources: ["endpointslices"]
+    verbs: ["list", "watch"]
+  - apiGroups: ["monitoring.coreos.com"]
+    resources: ["servicemonitors", "podmonitors", "probes", "scrapeconfigs"]
+    verbs: ["list", "watch"]
+  # kubernetes-apiservers static job: GET /metrics on kubernetes.default.svc:443
+  - nonResourceURLs: ["/metrics"]
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: otel-cluster-metrics
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: otel-cluster-metrics
+subjects:
+  - kind: ServiceAccount
+    name: otel-cluster-metrics
+    namespace: observability
+---
+# ---------------------------------------------------------------------------------------------
+# Tier 3 — unified logging (daemonset). Only what k8sattributes enrichment needs (pod metadata +
+# replicasets to resolve deployment names). File access is via hostPath, not the API.
+# ---------------------------------------------------------------------------------------------
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: otel-logs
+  namespace: observability
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: otel-logs
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "namespaces"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["apps"]
+    resources: ["replicasets"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: otel-logs
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: otel-logs
+subjects:
+  - kind: ServiceAccount
+    name: otel-logs
+    namespace: observability
+---
+# ---------------------------------------------------------------------------------------------
+# Tier 4 — cluster events (singleton deployment). Both API groups: the k8sobjects receiver may
+# resolve `events` to core "" or events.k8s.io depending on discovery.
+# ---------------------------------------------------------------------------------------------
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: otel-events
+  namespace: observability
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: otel-events
+rules:
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["events.k8s.io"]
+    resources: ["events"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: otel-events
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: otel-events
+subjects:
+  - kind: ServiceAccount
+    name: otel-events
+    namespace: observability

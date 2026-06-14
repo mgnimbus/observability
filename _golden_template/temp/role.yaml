@@ -1,0 +1,161 @@
+# ─────────── TIER 1: node-local metrics (kubelet/cAdvisor direct) ───────────
+apiVersion: v1
+kind: ServiceAccount
+metadata: { name: otel-tier1-nodemetrics, namespace: observability }
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata: { name: otel-tier1-nodemetrics }
+rules:
+  - apiGroups: [""]
+    resources: ["nodes", "nodes/metrics", "nodes/stats", "nodes/proxy"]
+    verbs: ["get", "list", "watch"]
+  - nonResourceURLs: ["/metrics", "/metrics/cadvisor"]
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata: { name: otel-tier1-nodemetrics }
+roleRef:
+  {
+    apiGroup: rbac.authorization.k8s.io,
+    kind: ClusterRole,
+    name: otel-tier1-nodemetrics,
+  }
+subjects:
+  - {
+      kind: ServiceAccount,
+      name: otel-tier1-nodemetrics,
+      namespace: observability,
+    }
+---
+# ─────────── TIER 2: cluster metrics collector ───────────
+apiVersion: v1
+kind: ServiceAccount
+metadata: { name: otel-tier2-clustermetrics, namespace: observability }
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata: { name: otel-tier2-clustermetrics }
+rules:
+  - apiGroups: [""]
+    resources: ["nodes", "nodes/metrics", "services", "endpoints", "pods"]
+    verbs: ["get", "list", "watch"]
+  - nonResourceURLs: ["/metrics"]
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata: { name: otel-tier2-clustermetrics }
+roleRef:
+  {
+    apiGroup: rbac.authorization.k8s.io,
+    kind: ClusterRole,
+    name: otel-tier2-clustermetrics,
+  }
+subjects:
+  - {
+      kind: ServiceAccount,
+      name: otel-tier2-clustermetrics,
+      namespace: observability,
+    }
+---
+# ─────────── TIER 2: Target Allocator (separate SA, narrow scope) ───────────
+apiVersion: v1
+kind: ServiceAccount
+metadata: { name: otel-targetallocator, namespace: observability }
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata: { name: otel-targetallocator }
+rules:
+  - apiGroups: [""]
+    resources:
+      ["nodes", "nodes/metrics", "services", "endpoints", "pods", "namespaces"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get"]
+  - apiGroups: ["discovery.k8s.io"]
+    resources: ["endpointslices"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["ingresses"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["monitoring.coreos.com"]
+    resources: ["servicemonitors", "podmonitors", "scrapeconfigs", "probes"]
+    verbs: ["get", "list", "watch"]
+  - nonResourceURLs: ["/metrics"]
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata: { name: otel-targetallocator }
+roleRef:
+  {
+    apiGroup: rbac.authorization.k8s.io,
+    kind: ClusterRole,
+    name: otel-targetallocator,
+  }
+subjects:
+  - {
+      kind: ServiceAccount,
+      name: otel-targetallocator,
+      namespace: observability,
+    }
+---
+# ─────────── TIER 3: logging daemonset ───────────
+apiVersion: v1
+kind: ServiceAccount
+metadata: { name: otel-tier3-logs, namespace: observability }
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata: { name: otel-tier3-logs }
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "namespaces", "nodes"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["apps"]
+    resources: ["replicasets"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata: { name: otel-tier3-logs }
+roleRef:
+  {
+    apiGroup: rbac.authorization.k8s.io,
+    kind: ClusterRole,
+    name: otel-tier3-logs,
+  }
+subjects:
+  - { kind: ServiceAccount, name: otel-tier3-logs, namespace: observability }
+---
+# ─────────── TIER 4: events singleton ───────────
+apiVersion: v1
+kind: ServiceAccount
+metadata: { name: otel-tier4-events, namespace: observability }
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata: { name: otel-tier4-events }
+rules:
+  - apiGroups: [""]
+    resources: ["events", "namespaces"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["events.k8s.io"]
+    resources: ["events"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata: { name: otel-tier4-events }
+roleRef:
+  {
+    apiGroup: rbac.authorization.k8s.io,
+    kind: ClusterRole,
+    name: otel-tier4-events,
+  }
+subjects:
+  - { kind: ServiceAccount, name: otel-tier4-events, namespace: observability }

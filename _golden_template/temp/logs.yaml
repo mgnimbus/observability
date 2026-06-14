@@ -1,0 +1,163 @@
+apiVersion: opentelemetry.io/v1beta1
+kind: OpenTelemetryCollector
+metadata:
+  name: tier3-logs
+  namespace: observability
+spec:
+  mode: daemonset
+  image: otel/opentelemetry-collector-contrib:0.154.0
+  serviceAccount: otel-tier3-logs
+  resources:
+    requests: { cpu: 200m, memory: 512Mi }
+    limits: { cpu: 1, memory: 1Gi }
+  securityContext:
+    runAsUser: 0 # required to read /var/log/pods on EKS
+    runAsGroup: 0
+  env:
+    - name: KUBE_NODE_NAME
+      valueFrom: { fieldRef: { fieldPath: spec.nodeName } }
+    - name: CLUSTER_NAME
+      value: "PLACEHOLDER_CLUSTER_NAME"
+    - name: ORG_ID
+      value: "PLACEHOLDER_ORG_ID"
+    - name: GOMEMLIMIT
+      value: "819MiB" # 80% of 1Gi
+  tolerations:
+    - operator: Exists
+  volumes:
+    - name: varlogpods
+      hostPath: { path: /var/log/pods, type: Directory }
+    - name: varlibdockercontainers
+      hostPath: { path: /var/lib/docker/containers, type: DirectoryOrCreate }
+    - name: otelcheckpoints
+      hostPath: { path: /var/lib/otelcol, type: DirectoryOrCreate }
+  volumeMounts:
+    - { name: varlogpods, mountPath: /var/log/pods, readOnly: true }
+    - {
+        name: varlibdockercontainers,
+        mountPath: /var/lib/docker/containers,
+        readOnly: true,
+      }
+    - { name: otelcheckpoints, mountPath: /var/lib/otelcol }
+  config:
+    extensions:
+      file_storage:
+        directory: /var/lib/otelcol
+        create_directory: true
+        timeout: 1s
+    receivers:
+      filelog:
+        include: ["/var/log/pods/*/*/*.log"]
+        exclude: ["/var/log/pods/observability_*/*/*.log"] # don't tail ourselves
+        start_at: end # avoid initial flood on fleet rollout
+        max_log_size: 1MiB
+        include_file_path: true
+        storage: file_storage
+        operators:
+          # Step 1: runtime auto-detect + CRI partial (16KB) recombination
+          - type: container
+            id: container-parser
+            add_metadata_from_filepath: true
+            max_log_size: 102400
+          # Step 2: stitch app multi-line stack traces (new entry = non-whitespace
+          # start, EXCEPT 'Caused by:' continuation lines)
+          - type: recombine
+            id: stacktrace-recombine
+            combine_field: body
+            source_identifier: attributes["log.file.path"]
+            is_first_entry: 'body matches "^[^\\s]" and not (body matches "^Caused by:")'
+            combine_with: "\n"
+            max_log_size: 102400
+            force_flush_period: 5s
+          # Step 3: best-effort severity parsing for structured (JSON) logs
+          - type: json_parser
+            id: json-parse
+            if: 'body matches "^\\{"'
+            on_error: send
+            parse_from: body
+            severity:
+              parse_from: attributes.level
+    processors:
+      memory_limiter:
+        check_interval: 1s
+        limit_mib: 900
+        spike_limit_mib: 180
+      k8sattributes:
+        auth_type: serviceAccount
+        passthrough: false
+        filter:
+          node_from_env_var: KUBE_NODE_NAME # node-scoped → avoids API throttling at 200 nodes
+        extract:
+          metadata:
+            - k8s.namespace.name
+            - k8s.pod.name
+            - k8s.pod.uid
+            - k8s.container.name
+            - k8s.deployment.name
+            - k8s.node.name
+        pod_association:
+          - sources: [{ from: resource_attribute, name: k8s.pod.uid }]
+      resourcedetection:
+        detectors: [env, eks, ec2]
+        timeout: 5s
+        override: false
+        eks:
+          resource_attributes:
+            k8s.cluster.name: { enabled: true }
+      resource:
+        attributes:
+          - {
+              key: k8s.cluster.id,
+              value: "${env:CLUSTER_NAME}",
+              action: upsert,
+            }
+          - {
+              key: k8s.cluster.name,
+              value: "${env:CLUSTER_NAME}",
+              action: upsert,
+            }
+      # Drop TRACE+DEBUG but KEEP INFO and KEEP unparsed (severity 0) logs.
+      filter/severity:
+        error_mode: ignore
+        logs:
+          log_record:
+            - "severity_number > 0 and severity_number < SEVERITY_NUMBER_INFO"
+      batch:
+        send_batch_size: 8192
+        send_batch_max_size: 10000
+        timeout: 5s
+    exporters:
+      otlphttp:
+        endpoint: https://otel.gowthamvandana.com:443
+        compression: snappy
+        headers:
+          X-Scope-OrgID: "${env:ORG_ID}"
+        retry_on_failure:
+          {
+            enabled: true,
+            initial_interval: 5s,
+            max_interval: 30s,
+            max_elapsed_time: 300s,
+          }
+        sending_queue:
+          enabled: true
+          num_consumers: 10
+          queue_size: 10000
+          storage: file_storage # persistent queue → at-least-once across restarts
+    service:
+      extensions: [file_storage]
+      telemetry:
+        metrics: { level: basic }
+      pipelines:
+        logs:
+          receivers: [filelog]
+          processors:
+            [
+              memory_limiter,
+              k8sattributes,
+              resourcedetection,
+              resource,
+              filter/severity,
+              batch,
+            ]
+          exporters: [otlphttp]

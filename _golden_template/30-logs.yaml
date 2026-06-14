@@ -1,0 +1,252 @@
+# Tier 3 — unified logging (DaemonSet)
+# Tails /var/log/pods on the local node. Anti-duplication: file_storage checkpoints offsets on a
+# hostPath so pod restarts resume instead of re-reading files, and the collector's own logs are
+# excluded (a collector ingesting its own error output is a feedback amplifier).
+# Anti-explosion: severity-gated drop of trace/debug, no pod label/annotation extraction, JSON
+# bodies are parsed only into a scratch field for severity and then removed — zero extra
+# attributes shipped per record.
+apiVersion: opentelemetry.io/v1beta1
+kind: OpenTelemetryCollector
+metadata:
+  name: otel-logs
+  namespace: observability
+  annotations:
+    argocd.argoproj.io/sync-wave: "1" # after namespace/RBAC/identity (wave 0)
+spec:
+  mode: daemonset
+  nodeSelector:
+    kubernetes.io/os: linux # the hostPath layout and root posture below are linux-only
+  priorityClassName: otel-collector-priority
+  # Default DS rollout is maxUnavailable=1 — 200 serial pod restarts on a 200-node cluster.
+  updateStrategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 10%
+  observability:
+    metrics:
+      enableMetrics: true
+      disablePrometheusAnnotations: true
+  image: otel/opentelemetry-collector-contrib:0.152.0
+  serviceAccount: otel-logs
+  # Root is required: the file_storage checkpoint db lives on a root-owned hostPath
+  # (/var/lib/otelcol) and host pod logs under /var/log/pods are root-owned. The chart-default
+  # non-root UID fails with "permission denied" opening receiver_filelog_*. Standard posture for a
+  # node log daemonset.
+  securityContext:
+    runAsUser: 0
+    runAsGroup: 0
+    runAsNonRoot: false
+  volumes:
+    - name: varlogpods
+      hostPath:
+        path: /var/log/pods
+    - name: otelcol-state
+      hostPath:
+        # Tier-scoped subdirectory: never share a bbolt state dir between collectors — a second
+        # opener blocks on the file lock (matters on clusters migrating from an older agent).
+        path: /var/lib/otelcol/otel-logs
+        type: DirectoryOrCreate
+  volumeMounts:
+    - name: varlogpods
+      mountPath: /var/log/pods
+      readOnly: true
+    - name: otelcol-state
+      mountPath: /var/lib/otelcol/otel-logs
+  resources:
+    requests:
+      cpu: 200m
+      memory: 400Mi
+    limits:
+      cpu: 1
+      memory: 1Gi
+  env:
+    - name: GOMEMLIMIT
+      value: "800MiB" # ~80% of the 1Gi pod limit
+    - name: K8S_NODE_NAME
+      valueFrom:
+        fieldRef:
+          fieldPath: spec.nodeName
+    - name: CLUSTER_NAME
+      valueFrom:
+        configMapKeyRef:
+          name: fleet-identity
+          key: CLUSTER_NAME
+    - name: ORG_ID
+      valueFrom:
+        configMapKeyRef:
+          name: fleet-identity
+          key: ORG_ID
+  tolerations:
+    - effect: NoSchedule
+      operator: Exists
+  config:
+    extensions:
+      health_check:
+        endpoint: 0.0.0.0:13133 # explicit: the component default is localhost, which kubelet probes can't reach
+      file_storage:
+        directory: /var/lib/otelcol/otel-logs
+
+    receivers:
+      filelog:
+        include:
+          - /var/log/pods/*/*/*.log
+        exclude:
+          # NEVER ingest this collector's own logs — an export error would be read back in,
+          # exported, fail, be logged, be read back in... (feedback loop).
+          - /var/log/pods/observability_otel-logs*/**
+        # start_at: end + storage: no historical backfill flood on first rollout; offsets
+        # checkpointed across restarts (no re-ingestion = no duplicates).
+        start_at: end
+        storage: file_storage
+        include_file_path: true # required: recombine below keys on log.file.path
+        # When the pipeline pushes back (memory_limiter), PAUSE READING instead of dropping
+        # entries — the files persist on disk, so backpressure costs latency, never data, and
+        # resumption is checkpoint-exact (no duplicates).
+        retry_on_failure:
+          enabled: true
+        operators:
+          # 1. Runtime parsing — the upstream `container` operator auto-detects
+          #    docker / containerd / cri-o, stitches 16KB CRI partial lines (P/F logtags)
+          #    internally, parses the timestamp, strips the runtime prefix into a clean body, and
+          #    extracts k8s.{namespace,pod,container}.name + k8s.pod.uid + restart count from the
+          #    file path as resource attributes. Supersedes the manual router/parser chain.
+          #    (NB: there is no `combine` operator in stanza — partial-stitching lives here, and
+          #    multi-line joining below is `recombine`.)
+          - type: container
+            id: container-parser
+            add_metadata_from_filepath: true
+
+          # 2. Join multi-line app output (Java/Python stack traces) AFTER runtime parsing, on
+          #    clean bodies. A new record starts at a non-continuation line; continuation lines
+          #    are whitespace-led frames, "Caused by:", and "... N more".
+          - type: recombine
+            id: stacktrace-recombine
+            combine_field: body
+            combine_with: "\n"
+            is_first_entry: body matches "^[^\\s]" && !(body matches "^(Caused by:|\\.\\.\\. \\d+ more)")
+            source_identifier: attributes["log.file.path"]
+            max_batch_size: 100 # hard cap — a pathological app cannot glue unbounded lines into one record
+            force_flush_period: 5s
+
+          # 3. Drop known noise emitters at the source.
+          - type: filter
+            id: junk-filter
+            expr: 'resource["k8s.container.name"] matches "^loki-canary.*$"'
+
+          # 4-7. Severity extraction WITHOUT attribute explosion: JSON bodies are parsed into a
+          #      scratch attribute only to read `level`, then the scratch is removed — no app
+          #      fields are shipped as structured metadata. logfmt-ish lines get a targeted
+          #      level= regex. on_error send_quiet: unparseable lines pass through unmodified.
+          - type: json_parser
+            id: json-severity
+            if: 'body matches "^\\{"'
+            parse_from: body
+            parse_to: attributes["__scratch"]
+            on_error: send_quiet
+            severity:
+              parse_from: attributes["__scratch"]["level"]
+          - type: remove
+            id: drop-json-scratch
+            if: 'attributes["__scratch"] != nil'
+            field: attributes["__scratch"]
+          - type: regex_parser
+            id: kv-severity
+            if: 'body matches "level=[A-Za-z]+"'
+            parse_from: body
+            regex: "level=(?P<__level>[A-Za-z]+)"
+            on_error: send_quiet
+            severity:
+              parse_from: attributes["__level"]
+          - type: remove
+            id: drop-kv-scratch
+            if: 'attributes["__level"] != nil'
+            field: attributes["__level"]
+
+    processors:
+      memory_limiter:
+        check_interval: 1s
+        limit_mib: 800
+        spike_limit_mib: 200
+
+      k8sattributes:
+        filter:
+          # The NAME of the env var (the processor resolves it itself) — passing an expanded
+          # value here is a silent no-op and the node filter never engages.
+          node_from_env_var: K8S_NODE_NAME
+        pod_association:
+          - sources:
+              - from: resource_attribute
+                name: k8s.pod.uid
+          - sources:
+              - from: resource_attribute
+                name: k8s.pod.name
+              - from: resource_attribute
+                name: k8s.namespace.name
+        extract:
+          # Deliberately lean: NO pod labels / NO annotations (annotations can carry
+          # kubectl last-applied blobs — kilobytes stamped onto every log record).
+          metadata:
+            - k8s.deployment.name
+            - k8s.node.name
+            - k8s.pod.start_time
+
+      resourcedetection:
+        detectors: [env, system, ec2]
+        timeout: 2s
+        override: false
+
+      resource:
+        attributes:
+          - action: upsert
+            key: k8s.cluster.id
+            value: "${env:CLUSTER_NAME}"
+          - action: upsert
+            key: otel.collector.id
+            value: otel-logs
+
+      # Drop ONLY records whose severity is known to be trace/debug (1–8). The guard against 0
+      # matters: unparsed severity is SEVERITY_NUMBER_UNSPECIFIED(0), and a bare `<= 9` drops
+      # every unparsed record (blackout) AND INFO itself (INFO = 9).
+      filter/noise:
+        error_mode: ignore
+        logs:
+          log_record:
+            - "severity_number > 0 and severity_number < 9"
+
+      batch:
+        send_batch_size: 1000
+        send_batch_max_size: 1500
+        timeout: 5s
+
+    exporters:
+      otlp:
+        endpoint: "https://otel.gowthamvandana.com:443"
+        tls:
+          insecure: false
+          # ca_file: /etc/otel/certs/ca.crt
+        headers:
+          X-Scope-OrgId: "${env:ORG_ID}"
+        compression: snappy
+
+    service:
+      extensions: [health_check, file_storage]
+      telemetry:
+        resource:
+          service.name: otel-logs
+        metrics:
+          level: normal
+        logs:
+          level: error
+      pipelines:
+        logs:
+          receivers: [filelog]
+          processors:
+            [
+              memory_limiter,
+              k8sattributes,
+              resourcedetection,
+              resource,
+              filter/noise,
+              batch,
+            ]
+          exporters: [otlp]

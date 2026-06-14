@@ -1,0 +1,151 @@
+apiVersion: opentelemetry.io/v1beta1
+kind: OpenTelemetryCollector
+metadata:
+  name: tier2-clustermetrics
+  namespace: observability
+spec:
+  mode: statefulset
+  image: otel/opentelemetry-collector-contrib:0.154.0
+  serviceAccount: otel-tier2-clustermetrics
+  resources:
+    requests: { cpu: 500m, memory: 1Gi }
+    limits: { cpu: 2, memory: 2Gi }
+  autoscaler:
+    minReplicas: 2
+    maxReplicas: 10
+    targetCPUUtilization: 75
+    targetMemoryUtilization: 75
+  env:
+    - name: POD_NAME
+      valueFrom: { fieldRef: { fieldPath: metadata.name } }
+    - name: CLUSTER_NAME
+      value: "PLACEHOLDER_CLUSTER_NAME"
+    - name: ORG_ID
+      value: "PLACEHOLDER_ORG_ID"
+    - name: GOMEMLIMIT
+      value: "1638MiB" # 80% of 2Gi
+  targetAllocator:
+    enabled: true
+    serviceAccount: otel-targetallocator
+    allocationStrategy: consistent-hashing
+    filterStrategy: relabel-config
+    prometheusCR:
+      enabled: true
+      scrapeInterval: 30s
+      # DEFENSE LAYER 1 of the firewall: only adopt ServiceMonitors/PodMonitors
+      # explicitly labeled for the platform. A legacy node-scraping SM without
+      # this label is simply never discovered.
+      serviceMonitorSelector:
+        matchLabels: { otel.platform/scrape: "true" }
+      podMonitorSelector:
+        matchLabels: { otel.platform/scrape: "true" }
+  config:
+    receivers:
+      prometheus:
+        config:
+          scrape_configs:
+            # kube-state-metrics (deployed as a platform dependency, see runbook)
+            - job_name: kube-state-metrics
+              scrape_interval: 30s
+              kubernetes_sd_configs:
+                - role: pod
+              relabel_configs:
+                - source_labels:
+                    [__meta_kubernetes_pod_label_app_kubernetes_io_name]
+                  regex: kube-state-metrics
+                  action: keep
+              metric_relabel_configs:
+                - source_labels: [__name__]
+                  regex: "kube_.*_annotations"
+                  action: drop
+            # Kubernetes API servers
+            - job_name: kubernetes-apiservers
+              scheme: https
+              kubernetes_sd_configs:
+                - role: endpoints
+              tls_config:
+                ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+                insecure_skip_verify: true
+              authorization:
+                type: Bearer
+                credentials_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+              relabel_configs:
+                - source_labels:
+                    [
+                      __meta_kubernetes_namespace,
+                      __meta_kubernetes_service_name,
+                      __meta_kubernetes_endpoint_port_name,
+                    ]
+                  regex: default;kubernetes;https
+                  action: keep
+              metric_relabel_configs:
+                # Drop high-cardinality apiserver/etcd histograms; keep SLO counters
+                - source_labels: [__name__]
+                  regex: "apiserver_request_duration_seconds_bucket|apiserver_request_slo_duration_seconds_bucket|apiserver_response_sizes_bucket|apiserver_watch_events_sizes_bucket|etcd_request_duration_seconds_bucket|etcd_disk_.*_duration_seconds_bucket"
+                  action: drop
+      # Operator rewrites this receiver to point at the TA http_sd endpoint.
+    processors:
+      memory_limiter:
+        check_interval: 1s
+        limit_mib: 1800
+        spike_limit_mib: 360
+      # ───── DEFENSE LAYER 2 of the firewall: pipeline-level OTTL drop ─────
+      # Applies regardless of scrape source. Makes double-scraping of node
+      # metrics mathematically impossible even if a SM slips through the TA.
+      filter/firewall:
+        error_mode: ignore
+        metrics:
+          metric:
+            - 'IsMatch(metric.name, "^(container_|kubelet_|cadvisor_|machine_|node_)")'
+      resourcedetection:
+        detectors: [env, eks, ec2]
+        timeout: 5s
+        override: false
+        eks:
+          resource_attributes:
+            k8s.cluster.name: { enabled: true }
+      resource:
+        attributes:
+          - {
+              key: k8s.cluster.id,
+              value: "${env:CLUSTER_NAME}",
+              action: upsert,
+            }
+          - {
+              key: k8s.cluster.name,
+              value: "${env:CLUSTER_NAME}",
+              action: upsert,
+            }
+      batch:
+        send_batch_size: 8192
+        send_batch_max_size: 10000
+        timeout: 10s
+    exporters:
+      otlphttp:
+        endpoint: https://otel.gowthamvandana.com:443
+        compression: snappy
+        headers:
+          X-Scope-OrgID: "${env:ORG_ID}"
+        retry_on_failure:
+          {
+            enabled: true,
+            initial_interval: 5s,
+            max_interval: 30s,
+            max_elapsed_time: 300s,
+          }
+        sending_queue: { enabled: true, num_consumers: 10, queue_size: 5000 }
+    service:
+      telemetry:
+        metrics: { level: basic }
+      pipelines:
+        metrics:
+          receivers: [prometheus]
+          processors:
+            [
+              memory_limiter,
+              filter/firewall,
+              resourcedetection,
+              resource,
+              batch,
+            ]
+          exporters: [otlphttp]

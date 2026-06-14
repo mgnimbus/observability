@@ -1,0 +1,36 @@
+# Self-telemetry for the telemetry plane itself. Every tier is an operator-managed CR with
+# observability.metrics.enableMetrics: true, so each gets a `<name>-collector-monitoring` Service
+# (:8888) — but NO ServiceMonitor (that needs the operator's `operator.observability.prometheus`
+# feature gate). This ONE ServiceMonitor scrapes all four tiers; the cluster-metrics TA discovers
+# it via serviceMonitorSelector: {}. Distinct `job` per tier comes from each collector's
+# service.telemetry.resource.service.name (otherwise everything collapses onto `otelcol-contrib`).
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: otel-collector-self
+  namespace: observability
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+  labels:
+    app.kubernetes.io/name: otel-collector-self
+spec:
+  namespaceSelector:
+    matchNames: [observability]
+  selector:
+    matchLabels:
+      operator.opentelemetry.io/collector-service-type: monitoring
+  endpoints:
+    - port: monitoring # :8888
+      interval: 60s
+      path: /metrics
+      # Drop high-cardinality / low-value self-telemetry at the scrape: process_cpu+runtime,
+      # otelsvc_k8s_*, the batch send-size histogram (~23 series/pod — the big one),
+      # prometheusremotewrite internals, batch metadata, internal durations.
+      # KEEP otelcol_process_uptime + otelcol_process_memory_rss — the OtelCol dashboard's `job`
+      # variable and its suffix-detector vars anchor on those two; dropping them blanks the board.
+      # Actionable signals (receiver/processor refused+dropped, exporter sent/send_failed/queue)
+      # are all kept.
+      metricRelabelings:
+        - sourceLabels: [__name__]
+          regex: "otelcol_(process_cpu_.+|process_runtime_.+|otelsvc_k8s_.+|processor_internal_duration_seconds.*|processor_batch_metadata_cardinality|exporter_prometheusremotewrite_.+|processor_batch_batch_send_size(_bytes)?_bucket)"
+          action: drop

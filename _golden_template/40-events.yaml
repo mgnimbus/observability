@@ -1,0 +1,134 @@
+# Tier 4 — cluster events (singleton Deployment)
+# Events are CLUSTER-scoped, not node-local. This MUST stay a strict replicas: 1 Deployment:
+# a daemonset or any autoscaled mode would ingest every event once PER REPLICA (duplication is
+# structural, not a tuning issue). There is no leader-elected HA for the k8sobjects receiver —
+# do not raise replicas for redundancy; a brief gap during rescheduling beats permanent ×N copies.
+apiVersion: opentelemetry.io/v1beta1
+kind: OpenTelemetryCollector
+metadata:
+  name: otel-events
+  namespace: observability
+  annotations:
+    argocd.argoproj.io/sync-wave: "1" # after namespace/RBAC/identity (wave 0)
+spec:
+  mode: deployment
+  replicas: 1
+  nodeSelector:
+    kubernetes.io/os: linux
+  priorityClassName: otel-collector-priority
+  observability:
+    metrics:
+      enableMetrics: true
+      disablePrometheusAnnotations: true
+  image: otel/opentelemetry-collector-contrib:0.152.0
+  serviceAccount: otel-events
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  env:
+    - name: GOMEMLIMIT
+      value: "400MiB" # ~80% of the 512Mi pod limit
+    - name: CLUSTER_NAME
+      valueFrom:
+        configMapKeyRef:
+          name: fleet-identity
+          key: CLUSTER_NAME
+    - name: ORG_ID
+      valueFrom:
+        configMapKeyRef:
+          name: fleet-identity
+          key: ORG_ID
+  config:
+    extensions:
+      health_check:
+        endpoint: 0.0.0.0:13133 # explicit: the component default is localhost, which kubelet probes can't reach
+
+    receivers:
+      # Watch cluster Events and emit each as a log record. auth_type: serviceAccount uses the
+      # pod SA (events list/watch in 01-rbac.yaml). mode: watch streams from "now" — restarts
+      # don't replay history (no duplicates).
+      k8sobjects:
+        auth_type: serviceAccount
+        objects:
+          - name: events
+            mode: watch
+
+      # OPTIONAL — cluster-state metrics (node conditions, pod phases, deployment ready-vs-desired)
+      # for clusters that do NOT run kube-state-metrics. Uncomment the receiver AND add it to a
+      # metrics pipeline. NEVER enable alongside kube-state-metrics — that double-ingests
+      # cluster-state series fleet-wide. (RBAC additions required: see README.)
+      # k8s_cluster:
+      #   auth_type: serviceAccount
+      #   collection_interval: 60s
+
+    processors:
+      memory_limiter:
+        check_interval: 1s
+        limit_mib: 450
+        spike_limit_mib: 100
+      resource:
+        attributes:
+          - key: k8s.cluster.id
+            value: "${env:CLUSTER_NAME}"
+            action: upsert
+          - key: otel.collector.id
+            value: otel-events
+            action: upsert
+      # Keep Warning+ only — Normal events (Scheduled/Pulled/Created/Started/...) are churn noise
+      # that multiplies ×200 clusters into Loki. A record is DROPPED when the condition is true.
+      # k8sobjects watch wraps the event: body["type"] is the watch verb (ADDED/MODIFIED/DELETED);
+      # the k8s event severity (Normal/Warning) lives at body["object"]["type"].
+      filter/normal:
+        error_mode: ignore
+        logs:
+          log_record:
+            - 'body["object"]["type"] == "Normal"'
+      # Collapse each surviving Warning event to a readable line and surface the key fields as
+      # queryable attributes — k8sobjects otherwise ships the entire event object (including noisy
+      # managedFields) as JSON. On any nil field the set() is skipped (error_mode: ignore) and that
+      # event passes through as full JSON instead.
+      transform/events:
+        error_mode: ignore
+        log_statements:
+          - context: log
+            statements:
+              - 'set(attributes["k8s.event.reason"], body["object"]["reason"])'
+              - 'set(attributes["k8s.event.kind"], body["object"]["involvedObject"]["kind"])'
+              - 'set(attributes["k8s.event.name"], body["object"]["involvedObject"]["name"])'
+              - 'set(attributes["k8s.event.namespace"], body["object"]["involvedObject"]["namespace"])'
+              - 'set(severity_text, body["object"]["type"])'
+              - 'set(severity_number, SEVERITY_NUMBER_WARN)'
+              - 'set(body, Concat([body["object"]["type"], " ", body["object"]["reason"], " ", body["object"]["involvedObject"]["kind"], "/", body["object"]["involvedObject"]["name"], ": ", body["object"]["message"]], ""))'
+      batch:
+        send_batch_size: 1000
+        send_batch_max_size: 1000
+        timeout: 5s
+
+    exporters:
+      otlp:
+        endpoint: "https://otel.gowthamvandana.com:443"
+        tls:
+          insecure: false
+          # ca_file: /etc/otel/certs/ca.crt
+        headers:
+          X-Scope-OrgId: "${env:ORG_ID}"
+        compression: snappy
+
+    service:
+      extensions: [health_check]
+      telemetry:
+        resource:
+          service.name: otel-events
+        metrics:
+          level: normal
+        logs:
+          level: error
+      pipelines:
+        logs:
+          receivers: [k8sobjects]
+          processors: [memory_limiter, resource, filter/normal, transform/events, batch]
+          exporters: [otlp]
