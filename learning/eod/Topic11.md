@@ -202,7 +202,7 @@ flowchart TD
 
 ---
 
-## Quiz — answer from memory, then check the key
+## Quiz — PASSED 2026-06-14 ✅ (Q3 two-stage relabel + Q4 VIP-load-balance corrected on retry)
 
 ### Questions (self-test cold)
 1. **It's not a scraper.** A ServiceMonitor is just a YAML object — so what actually turns it into
