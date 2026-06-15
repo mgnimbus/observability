@@ -7,7 +7,30 @@ not advance until the current topic is mastered.
 Legend: ⬜ not started · 🟡 in progress · ✅ mastered (quiz passed) · 🔁 needs review
 
 **Current focus:** Phase 1, deep-dive depth inline. **T7 Exporters, T8 node-exporter, T9 KSM all MASTERED 2026-06-14**, each with a live **cleanup capstone** (per-job cardinality optimization on the meta-monitoring stack — tracked in `_meta_monitoring/OPTIMIZATION.md`). **T10 cAdvisor (+kubelet) MASTERED 2026-06-14** (quiz passed; Q4 join deferred — see below); cleanup DONE (container_ firehose −73%, cluster ingest −9.3k). **T11 ServiceMonitor + T12 PodMonitor + T13 Prometheus Operator MASTERED 2026-06-14** (T12: live-verify caught two stale claims of mine — TA `podMonitorSelector` is already `{}` **and** the PodMonitor CRD **is installed**, both gates open, 0 objects by design. T13: closed the Operator-vs-Prometheus-server conflation; grounded on the live no-Operator/no-server disaggregation). Cumulative sweep so far: cluster `samples_ingested` **52,775 → 37,315 (~29%)**.
-**Next up:** **T11 infra-controller cleanup sweep** (cert-manager/aws-lb-controller/webhook/cainjector SM `metricRelabelings`) — **ACTIVE NEXT** (T11's deferred capstone; needs keyboard/apply). Then **T14 OTel metrics**. **NEW deferred chapter — "PromQL & metric joins"** (`group_left`, owner-chain, the cАdvisor×KSM rollup — T10 Q4 deferred here by user request); slot it around the query-path/Grafana topics. (cAdvisor inserted as **T10** → ServiceMonitor=T11, PodMonitor=T12, Prometheus Operator=T13, OTel metrics=T14, rest +1; numbering fixed in the table below.)
+**Next up (RESUME HERE):** ▶ **T14 OTel metrics** — next unstarted topic (assess-first, then teach).
+
+**Session 2026-06-14 close-out (what's DONE, so we don't redo):**
+- **T11 infra-controller cleanup — DONE.** aws-lb-controller SM `metricRelabelings` whole-family
+  histogram drop (`_(bucket|sum|count)`) → **978→200 series** (cert-manager left alone — 76 series, all
+  high-value `certmanager_*`). Applied + validated.
+- **3-way label dedup — DONE (the big one), at the PER-TEAM collectors (NOT the gateway).** `resource`
+  delete of the duplicate `k8s_*`/`server_*`/`url_scheme` resource attrs + `transform` scope-clear
+  (`otel_scope_*`) in `meta_ta`+`meta_metrics`; node-exporter `node` relabel restored; KSM `uid`
+  labeldrop. Applied + validated (k8s_* gone from node_cpu; gateway untouched → other tenants safe).
+- **Platform-as-a-Product kit — BUILT** at `learning/platform-cardinality-kit/` (KNOWLEDGE runbook +
+  mistakes-ledger, `cardinality-reduction` skill w/ baseline.sh+analyze.sh+cookbook, TOOLCHAIN,
+  KICKOFF-PROMPT). Scripts smoke-tested read-only. Staged for the user's commit. (Ultraplan merge dropped.)
+
+**Open cardinality follow-ups (deferred, NOT blocking T14):**
+- Next firehoses = the LGTM components' OWN histograms (`loki_*`/`cortex_*`/`grafana_*` `_bucket`) —
+  surfaced by analyze.sh; tackle in the Loki/Mimir/Grafana topics (T18/T22) or a dedicated sweep.
+- `k8s_statefulset_name` escaped the dedup delete-list (add it). cAdvisor `id/name/image` labeldrop
+  (needs per-use check). The 5 golden hardening items for the meta collectors (guardrails/health_check/
+  nodeSelector/priorityClass/updateStrategy/min2). Update `OPTIMIZATION.md` tracker with the dedup rows.
+
+**Deferred chapter — "PromQL & metric joins"** (`group_left`, owner-chain, cАdvisor×KSM rollup — T10 Q4);
+slot around the query-path/Grafana topics. (Numbering: cAdvisor=T10, SM=T11, PodMonitor=T12, PromOp=T13,
+OTel metrics=T14, rest +1.)
 
 ---
 
