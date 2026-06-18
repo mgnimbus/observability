@@ -1,0 +1,7 @@
+flowchart TB
+  SER["one ACTIVE series<br/>(unique __name__ + labels)"]
+  SER --> ING["ingester: RAM in TSDB head<br/>(memSeries + index + WAL) ← #1 OOM"]
+  SER --> IDX["index: inverted postings grow<br/>→ slower selects"]
+  SER --> QRY["query: bigger series selection<br/>→ more fan-out, more samples"]
+  SER --> CMP["compactor: more to merge/dedupe"]
+  SER --> SG["store-gateway: bigger index + cache pressure"]

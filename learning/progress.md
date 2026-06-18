@@ -12,6 +12,12 @@ Legend: ⬜ not started · 🟡 in progress · ✅ mastered (quiz passed) · �
 *core* mastered 2026-06-18 (temporality · data model · instruments · exemplars · native histograms);
 gold doc + 3 diagrams written; grounded in live gateway PRW flags.
 
+**Preview drafts written ahead (2026-06-18, for phone revision):** `eod/Topic15.md`–`Topic19.md`
+(OTel Collector · Processors · Receivers · Exporters · **Mimir architecture**). These are
+**pre-teaching** — quizzes carry **NO answers** (Topic19 Scenario A is the one worked example); each
+still ⬜ until taught + quizzed live. **T19** additionally goes deep on high-cardinality resolution +
+cross-tenant/multi-cluster federation + the 35M-series production scenario.
+
 **Session 2026-06-14 close-out (what's DONE, so we don't redo):**
 - **T11 infra-controller cleanup — DONE.** aws-lb-controller SM `metricRelabelings` whole-family
   histogram drop (`_(bucket|sum|count)`) → **978→200 series** (cert-manager left alone — 76 series, all
@@ -76,7 +82,7 @@ scrape→WAL→Mimir→S3→Grafana (T28).
 | 16 | Processors | ⬜ | – | — | |
 | 17 | Receivers | ⬜ | – | — | |
 | 18 | Exporters (OTel) | ⬜ | – | — | |
-| 19 | Mimir architecture | ⬜ | – | P7·P9 | |
+| 19 | Mimir architecture | ⬜ | – | P7·P9 | **PREVIEW DRAFT 2026-06-18** (eod/Topic19.md). Write/read **microservice split** (distributor→ingester→S3 / query-frontend→scheduler→querier→store-gateway), hash ring + **RF**, **shuffle sharding**. Deep: **high cardinality** (cost map + ladder — cardinality API → per-tenant limits → drop-at-source → shuffle sharding → recording rules) · **cross-tenant/multi-cluster federation** (`X-Scope-OrgID: t1|…|tN` fan-out, `tenant_federation.enabled`, recording-rule pre-agg) · **35M-series production scenario** (A: OOM/restarts **WORKED** — 300m-CPU throttle→GC stall→OOM + RF3 memory math + 10/90 skew; B: p99=15s **UNANSWERED** exercise). Grounded vs dev `_5_mimir/default.yaml` (RF1, 2 ingesters @20m, no limits, MinIO). ⬜ until taught+quizzed live. |
 | 20 | remote_write | ⬜ | – | P8 | |
 | 21 | Multi-tenancy | ⬜ | – | P9 | |
 | 22 | Query path | ⬜ | – | P9 | |

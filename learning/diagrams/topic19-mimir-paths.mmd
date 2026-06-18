@@ -1,0 +1,15 @@
+flowchart LR
+  subgraph W["WRITE PATH (scales with ingest / active series)"]
+    RW["remote_write<br/>(N clusters)"] --> D["distributor<br/>validate · per-tenant limits<br/>hash-ring → RF"]
+    D --> I["ingester<br/>TSDB head (RAM) + WAL<br/>→ flush block ~2h"]
+    I --> S3[("S3 blocks")]
+    CMP["compactor<br/>compact/dedupe/retention"] --- S3
+  end
+  subgraph R["READ PATH (scales with query load)"]
+    Q["PromQL"] --> QF["query-frontend<br/>split · results-cache · sharding"]
+    QF --> QS["query-scheduler<br/>queue / fairness"]
+    QS --> QR["querier<br/>PromQL eval (CPU-bound)"]
+    QR --> I
+    QR --> SG["store-gateway<br/>index-header + index/chunks cache"]
+    SG --> S3
+  end

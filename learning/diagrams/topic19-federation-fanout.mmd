@@ -1,0 +1,7 @@
+flowchart LR
+  C1["cluster 1 RW"] --> M
+  C2["cluster 2 RW"] --> M
+  C35["cluster 35 RW"] --> M[("one Mimir<br/>(global view)")]
+  QQ["query<br/>X-Scope-OrgID: t1|t2|…|t15"] --> QF["query-frontend"]
+  QF -->|"fan-out × 15 tenants"| F1["t1 series"] & F2["t2 series"] & F15["t15 series"]
+  F1 & F2 & F15 --> MG["merge results"] --> OUT["response"]
