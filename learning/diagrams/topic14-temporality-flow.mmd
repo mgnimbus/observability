@@ -1,0 +1,12 @@
+flowchart LR
+  subgraph app["App + OTel SDK (auto-instr)"]
+    C["Counter: ++3 ++5 ++0 ++2"]
+  end
+  C -->|"OTLP push<br/>temporality pref = CUMULATIVE (SDK default)"| OR["otlp receiver"]
+  NE["node-exporter :9100"] -->|"scrape / pull<br/>always cumulative"| PR["prometheus receiver"]
+  OR --> PROC["processors (memory_limiter, batch,<br/>resource, transform…)"]
+  PR --> PROC
+  PROC --> X["prometheusremotewrite exporter<br/>REQUIRES cumulative — DROPS delta"]
+  X --> M[("Mimir")]
+  DELTA["⚠ if any app emits DELTA"] -. "must insert" .-> DTC["deltatocumulative processor<br/>(stateful: max_stale 5m, max_streams cap;<br/>restart = state loss → gap)"]
+  DTC -.-> PROC

@@ -1,0 +1,10 @@
+flowchart TB
+  subgraph otel["One OTLP metric, as the SDK ships it"]
+    RA["RESOURCE attrs<br/>service.name · service.instance.id<br/>k8s.pod.name · k8s.namespace.name"]
+    DP["DATA-POINT attrs<br/>http.method · http.route · status_code"]
+  end
+  DP -->|"sanitize . → _   (always)"| LBL["Prometheus LABELS on the series"]
+  RA -->|"service.name → job<br/>service.instance.id → instance"| JI["job / instance (identity)"]
+  RA ==>|"DEFAULT"| TI["target_info{job,instance,…}=1<br/>join via group_left"]
+  RA -.->|"OUR flag: resource_to_telemetry_conversion=true"| LBL
+  TI -.->|"OUR flag: target_info.enabled=false"| GONE["(not emitted)"]

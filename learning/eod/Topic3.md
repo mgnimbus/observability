@@ -121,6 +121,44 @@ possible *because* buckets are additive; you could never pre-aggregate a summary
 - Type metadata is **lost** over OTLP→Mimir here (`list_prometheus_metric_metadata` returns empty)
   → infer type from **name + shape** (`_bucket`/`_total` suffixes, monotonicity), not metadata.
 
+## PromQL by type — worked examples (which function is legal, and WHY)
+The type is a **reset contract**, and each PromQL function makes an assumption about that contract.
+Pick the wrong one and you get silent garbage — no error, just a lying graph.
+
+**Two function families, split by one question — "does it assume the series resets to 0?"**
+
+| Family | Functions | Assumes monotonic + compensates resets? | Use on |
+|---|---|---|---|
+| **Counter functions** | `rate()` · `irate()` · `increase()` | **YES** — a drop ⇒ "reset", add the post-drop value | **counters only** |
+| **Gauge functions** | `delta()` · `idelta()` · `deriv()` · `predict_linear()` · `*_over_time()` | **NO** — a drop is just a drop | **gauges only** |
+| **Aggregators** | `sum` · `avg` · `max` · `min` · `count` · `quantile` | n/a (operate on the instant vector) | both — *but see below* |
+
+### Example A — Counter: `cortex_distributor_received_samples_total`
+Raw value is a since-boot cumulative total (billions). **Reading it raw is meaningless**; you want the slope.
+- `sum(rate(cortex_distributor_received_samples_total[5m]))` ≈ **2,034 samples/s** — the live story.
+- `increase(...[5m])` = total over the window = `rate × 300s`. Same machinery, different unit.
+- **Why `rate()` is correct:** counter is monotonic, so `rate()` diffs consecutive samples ÷ Δt, and
+  when a pod restarts (value drops to 0) it *detects the reset and compensates* → no negative spike.
+- **The aggregator trap:** `avg(cortex_distributor_received_samples_total)` is **legal syntax but
+  semantically void** — you're averaging since-boot totals across pods that booted at different times.
+  Correct order is **`rate()` first, aggregate second:** `sum(rate(...))`, `avg(rate(...))`. Never aggregate the raw counter.
+
+### Example B — Gauge: `cortex_ingester_memory_series`
+Current level; legitimately rises and falls (series churn in, ingester flushes out).
+- Instant aggregate: `sum(cortex_ingester_memory_series)` ≈ **209,296 active series** (your cardinality bill).
+- Time-average: `avg_over_time(cortex_ingester_memory_series[1h])`. Peak: `max_over_time(...[1h])`.
+- Net change over a window: `delta(cortex_ingester_memory_series[1h])` (can be **negative** — that's valid).
+- Per-second trend via linear fit: `deriv(...[1h])`; forecast: `predict_linear(...[4h], 3600)`.
+- **Why `rate()`/`increase()` are ILLEGAL here:** they assume monotonic-with-resets. A gauge dropping
+  64,093 → 60,000 (a normal flush) is read by `rate()` as a **counter reset**, so it *adds* 60,000 as
+  "increase since reset" → **inflated nonsense**. This is the **exact reset-misfire** behind the T14
+  delta-temporality bug and the `UpDownCounter`→counter danger: a non-monotonic series + a counter
+  function = fabricated spikes.
+
+**The asymmetry to memorize:** `delta()` and `rate()` both mean "change over time" — but `delta()` is the
+**gauge** tool (endpoint difference, no reset logic) and `rate()` is the **counter** tool (reset-compensating,
+per-second). Same intent, opposite reset contract. Matching the function to the contract *is* the skill.
+
 ## Practical exercises (live cluster)
 1. `sum by (le)(cortex_request_duration_seconds_bucket{route="api_v1_push"})` — reproduce the bucket
    table; confirm `+Inf == _count`.

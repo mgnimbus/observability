@@ -7,7 +7,10 @@ not advance until the current topic is mastered.
 Legend: ⬜ not started · 🟡 in progress · ✅ mastered (quiz passed) · 🔁 needs review
 
 **Current focus:** Phase 1, deep-dive depth inline. **T7 Exporters, T8 node-exporter, T9 KSM all MASTERED 2026-06-14**, each with a live **cleanup capstone** (per-job cardinality optimization on the meta-monitoring stack — tracked in `_meta_monitoring/OPTIMIZATION.md`). **T10 cAdvisor (+kubelet) MASTERED 2026-06-14** (quiz passed; Q4 join deferred — see below); cleanup DONE (container_ firehose −73%, cluster ingest −9.3k). **T11 ServiceMonitor + T12 PodMonitor + T13 Prometheus Operator MASTERED 2026-06-14** (T12: live-verify caught two stale claims of mine — TA `podMonitorSelector` is already `{}` **and** the PodMonitor CRD **is installed**, both gates open, 0 objects by design. T13: closed the Operator-vs-Prometheus-server conflation; grounded on the live no-Operator/no-server disaggregation). Cumulative sweep so far: cluster `samples_ingested` **52,775 → 37,315 (~29%)**.
-**Next up (RESUME HERE):** ▶ **T14 OTel metrics** — next unstarted topic (assess-first, then teach).
+**Next up (RESUME HERE):** ▶ **T14 final exam** — 5 brutal Qs sit unanswered at the bottom of
+`eod/Topic14.md`; answer cold + grade to **lock T14**, then advance to **T15 OTel Collector**. T14
+*core* mastered 2026-06-18 (temporality · data model · instruments · exemplars · native histograms);
+gold doc + 3 diagrams written; grounded in live gateway PRW flags.
 
 **Session 2026-06-14 close-out (what's DONE, so we don't redo):**
 - **T11 infra-controller cleanup — DONE.** aws-lb-controller SM `metricRelabelings` whole-family
@@ -68,7 +71,7 @@ scrape→WAL→Mimir→S3→Grafana (T28).
 | 11 | ServiceMonitor | ✅ | pass | P3·P5 | **MASTERED 2026-06-14** (Q3 two-stage relabel + Q4 VIP-load-balance corrected on retry); cleanup capstone (infra-controller SM sweep) pending @keyboard. CRD declaring scrape intent — NOT a scraper; consumed by the TA (vs classic Prometheus Operator); selects Services→Endpoints (per-pod, not VIP); `relabelings`=Stage1 (targets) / `metricRelabelings`=Stage2 (cardinality lever); #1 fail = 0 targets (selector/port-name/namespaceSelector). Infra-controller cleanup sweep lands here. (was T10; +1 after cAdvisor) |
 | 12 | PodMonitor | ✅ | pass | — | **MASTERED 2026-06-14.** SM minus the Service: `role: pod` (vs `endpoints`), selects **pods** by label, port = **container** port name (`portNumber` for unnamed), only `__meta_kubernetes_pod_*` survives (endpoints/service families vanish). **Separate CRD** (absent → apply rejected at admission) — but **installed in our cluster** (live-verified, ships each daily deploy); `podMonitorSelector` nil=none/`{}`=all (ours is `{}`, `meta_ta.yaml:23`). **Both gates open** → we run **0 PodMonitor *objects* by design** (mint a Service → SM-only, one discovery plane). Not-ready CrashLoop pod IS a target under both SM+PM (`up=0`); failing-to-start = KSM's job. see eod/Topic12.md. (was T11) |
 | 13 | Prometheus Operator | ✅ | pass | P3 | **MASTERED 2026-06-14.** Controller, **NOT** a server/scraper/TSDB — input=CRDs, output=`prometheus.yaml` Secret + managed Prometheus StatefulSet (touches 0 samples). **CRD ≠ controller** (inert objects until a consumer reads them → why we have SM/PM CRDs with no Operator). Reconcile/reload = regenerate Secret → **config-reloader sidecar** `/-/reload`; our analog = **TA-served HTTP target list** + **collector receiver polling the TA**. Live: **no Operator, no Prometheus server**; OTel Operator runs; only a **3-CRD subset** (servicemonitors/podmonitors/scrapeconfigs). Disaggregation: Operator→OTel Operator, config-gen+SD→TA, scrape→collector, TSDB/PromQL/ruler→Mimir, PrometheusRule→Mimir ruler. see eod/Topic13.md. (was T12) |
-| 14 | OTel metrics | ⬜ | – | — | |
+| 14 | OTel metrics | 🟡 | core | — | **CORE MASTERED 2026-06-18; 5-Q final exam PENDING (resume).** Two dialects (prometheus receiver pull / otlp receiver push) → one cumulative PRW egress, diverge only at the receiver. **Temporality:** PRW **DROPS** delta monotonic sums → symptom = *missing metric* (not inflated `rate()`); SDK OTLP default = cumulative; `deltatocumulative` is stateful (`max_stale` 5m / `max_streams` cap → OOM). **Translation:** sanitize `.`→`_` + `add_metric_suffixes` (`_total`/units; rebuilds histogram family); `service.name`→`job`, `service.instance.id`→`instance`; resource attrs → `target_info` **by default** vs **our** `resource_to_telemetry_conversion:true` flatten (+`target_info.enabled:false`). **Instruments:** UpDownCounter→gauge (lossy), Observable*=callback flavor (not a type), **no OTel summary**. **Exemplars** (RW v2 + Mimir `max_global_exemplars_per_user`, both gates shut). **Native vs classic histograms** (Mimir `native_histograms_ingestion_enabled` OFF). see eod/Topic14.md |
 | 15 | OTel Collector | ⬜ | – | — | |
 | 16 | Processors | ⬜ | – | — | |
 | 17 | Receivers | ⬜ | – | — | |
@@ -165,6 +168,16 @@ scrape→WAL→Mimir→S3→Grafana (T28).
   (config-reloader sidecar `/-/reload`)** and their TA-stack analogs (TA-served HTTP target list +
   collector receiver polling); and (Q4) said "TA down → list empty" — corrected to "keeps the **last
   fetched** target list," parallel to Operator-down. Recovered all on retry.
+- 2026-06-18: T14 — initially modeled the delta-temporality failure as an **inflated `rate()` graph**
+  (true *conceptually*). In our **actual** pipeline the `prometheusremotewrite` exporter's contract is
+  cumulative and it **DROPS** delta monotonic sums ("cumulative or otherwise dropped") — so the real
+  symptom is a **MISSING metric** (silent), debugged via T29, not a wrong graph. Also at assessment:
+  stated "all resource attributes become labels" as a universal rule — that's **our** config
+  (`resource_to_telemetry_conversion: true`), NOT the default (default parks them in `target_info`,
+  keyed by `job`+`instance`, joined via `group_left`; `service.name`→`job`, `service.instance.id`→
+  `instance`). And mapped OTel **async/observable → Summary** (wrong twice: observable is the
+  *callback flavor* of the same instruments — `ObservableCounter`→counter — and **OTel emits no
+  summaries** at all). All corrected in-topic; grounded on live gateway PRW flags.
 
 ## Quiz score history
 _(Claude appends: date · topic · result · the gap it revealed)_
@@ -228,3 +241,15 @@ _(Claude appends: date · topic · result · the gap it revealed)_
   quiz on Q1 (Operator = controller, not server) + Q2 (CRD ≠ controller; inert objects). Grounded on
   live disaggregation: no Operator, no Prometheus server, OTel Operator running, 3-CRD subset only.
   see eod/Topic13.md.
+- 2026-06-18 · T14 OTel metrics · **CORE PASS (5-Q final exam PENDING — resume)** · clean on receiver
+  divergence (pull vs push, merge only past the receiver), temporality (delta vs cumulative + the
+  `rate()` reset-inflation mechanism applied from T5), the 3-layer attribute model → `target_info`
+  default vs our flatten + the PromQL filter contrast (vanilla needs `group_left`, ours is a direct
+  label), and instrument mapping (UpDownCounter→gauge lossy; Observable=callback; **no OTel summary**).
+  Depth folded in: exemplars (RW v2 + `max_global_exemplars_per_user`, both gates currently shut),
+  native vs classic histograms (Mimir `native_histograms_ingestion_enabled` OFF; ~15 series→1), delta
+  audit (**static** — no live cluster: no `deltatocumulative` anywhere + SDK default cumulative ⇒ apps
+  cumulative). **Correction logged:** delta→PRW = **dropped/missing**, not inflated. Also amended
+  `Topic3.md` with a "PromQL by type" worked-examples section (counter `rate`/`increase` vs gauge
+  `avg`/`delta`/`deriv`; the reset-contract split). Grounded in live gateway PRW flags
+  (`_8_otel_collector/manifests/values.yaml:90`). see eod/Topic14.md.

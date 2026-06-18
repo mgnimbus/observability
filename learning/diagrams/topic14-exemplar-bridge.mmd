@@ -1,0 +1,4 @@
+flowchart LR
+  A["App SDK: histogram.observe() inside a SAMPLED span<br/>→ attaches trace_id as exemplar"] --> C["collector PRW exporter"]
+  C -->|"GATE 1: Remote Write v2 required<br/>(else written_exemplars stays 0)"| M[("Mimir")]
+  M -->|"GATE 2: max_global_exemplars_per_user > 0<br/>(per-tenant ring buffer, NOT TSDB, default OFF)"| G["Grafana panel → exemplar → Tempo by trace_id"]
