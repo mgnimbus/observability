@@ -292,10 +292,20 @@ contrast; Q4 instruments incl. `UpDownCounter` lossy mapping, "observable=callba
 "no OTel summary". Depth folded in: exemplars (2 gates), native histograms (classic vs native + Mimir
 flag), delta audit (static — apps cumulative). **Misconception corrected mid-topic:** the Q2 failure
 in our *actual* pipeline is **PRW dropping delta → missing metric**, not an inflated graph.
-**PENDING — resume here:** the 5-question brutal final exam (see below) was posed but not yet
-answered/graded; mastery is provisional until it's passed.
+**FULLY MASTERED — final exam PASSED (2026-06-27, 5/5).** Cold-clean: **Q1** delta reconciliation
+(conceptual inflated `rate()` vs our pipeline → PRW *drops* delta → debug a **missing metric**, never
+the inflated graph) and **Q2** both exemplar gates (RW v2 + `max_global_exemplars_per_user`). Closed
+on retry: **Q3(c)** first said "exemplars not allowed on native histograms" (wrong — they ride RW
+fine) → corrected to **classic `_bucket`/`_sum`/`_count` series vanish → dashboards + recording rules +
+alerts that query `le=` break** (+ `query_result_response_format: protobuf` for sharded native
+queries); **Q4** first `service_name` then "`job` in `target_info`" → corrected to **`job` as a direct
+identity label on every series** (`target_info` is disabled in our config — `target_info.enabled:false`),
+final series `queue_depth{job="worker", queue="email"}`; **Q5** first non-responsive (restated the
+setup) → then knobs + restart, finally per-knob protection: **`max_stale`** evicts idle/dead streams
+(memory bound), **`max_streams`** caps the per-series state table (OOM guard), **restart = in-memory
+state loss → gap/reset downstream**.
 
-### Final exam — PENDING (answer cold on resume, no hints)
+### Final exam — PASSED 2026-06-27 (questions kept for cold revision)
 1. Reconcile the two delta-failure stories (conceptual inflated `rate()` vs actual pipeline). What
    happens to a delta monotonic counter end-to-end, and which symptom do you debug in Grafana?
 2. Exemplars on in the SDK, traces in Tempo, but none on the latency panel; `written_exemplars`=0.

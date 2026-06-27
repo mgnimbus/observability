@@ -316,25 +316,42 @@ jobs:
           cd _1_eks && terraform init
           aws eks update-kubeconfig --region ${{ env.AWS_REGION }} --name "$(terraform output -raw cluster_name)"
 
-      - name: Deploy Dashboards via Port Forward
+      - name: Deploy Dashboards + Rules via Port Forward
         working-directory: ./_9_grafana_dashboards
         env:
-          TF_VAR_grafana_admin_password: ${{ secrets.GRAFANA_ADMIN_PASSWORD }}
+          # grafana provider (dashboards) — provider hits the local tunnel below
+          TF_VAR_grafana_url: http://localhost:3000
+          TF_VAR_grafana_username: admin
+          TF_VAR_grafana_password: ${{ secrets.GRAFANA_ADMIN_PASSWORD }}
         run: |
-          echo "🔌 Exposing Grafana local port forward..."
+          set -euo pipefail
+
+          echo "🔌 Starting tunnels: Grafana :3000 (dashboards) + Mimir :9009 (ruler rules)..."
           kubectl port-forward -n grafana svc/grafana 3000:80 &
-          TUNNEL_PID=$!
+          GRAFANA_PID=$!
+          kubectl port-forward -n mimir svc/mimir-nginx 9009:80 &
+          MIMIR_PID=$!
+          # Tear down BOTH tunnels however the step exits (success or failure)
+          trap 'kill "$GRAFANA_PID" "$MIMIR_PID" 2>/dev/null || true' EXIT
 
-          echo "⏳ Giving port-forward a moment to bind..."
-          sleep 5
+          echo "⏳ Waiting for both tunnels to answer (max 60s) — replaces the fixed sleep..."
+          for i in $(seq 1 30); do
+            g=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:3000/api/health || true)
+            m=$(curl -s -o /dev/null -w '%{http_code}' -H 'X-Scope-OrgID: obsrv' \
+                  http://localhost:9009/prometheus/config/v1/rules || true)
+            if [ "$g" = "200" ] && [ "$m" = "200" ]; then
+              echo "✅ tunnels ready (grafana=$g mimir=$m)"; break
+            fi
+            if [ "$i" -eq 30 ]; then
+              echo "❌ tunnels not ready after 60s (grafana=$g mimir=$m)"; exit 1
+            fi
+            sleep 2
+          done
 
-          echo "📊 Deploying Grafana dashboards..."
+          echo "📊 Deploying Grafana dashboards + Mimir/Loki recording rules..."
           terraform init
           terraform plan -lock-timeout=5m -out=tfplan
           terraform apply -lock-timeout=5m -auto-approve tfplan
-
-          echo "🛑 Tearing down port-forward session..."
-          kill $TUNNEL_PID
 
   # Summary
   summary:
@@ -363,6 +380,6 @@ jobs:
           echo "**Monitoring · 3 otel**: ${{ needs.monitoring-otel.result }}" >> $GITHUB_STEP_SUMMARY
           echo "**Monitoring · 4 grafana**: ${{ needs.monitoring-grafana.result }}" >> $GITHUB_STEP_SUMMARY
           echo "**Monitoring · 5 meta**: ${{ needs.monitoring-meta.result }}" >> $GITHUB_STEP_SUMMARY
-          echo "**Monitoring · 6 dashboards**: ${{ needs.monitoring-observability.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Monitoring · 6 dashboards + rules**: ${{ needs.monitoring-observability.result }}" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "🚀 Infrastructure deployed by @${{ github.actor }}" >> $GITHUB_STEP_SUMMARY

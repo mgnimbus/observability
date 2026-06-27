@@ -32,6 +32,16 @@ mimir:
         bucket_name: ${mimir_chunks_bucket}
         insecure: false
         endpoint: s3.ap-south-2.amazonaws.com
+    # Ruler rule groups persist to object storage (NOT local FS — the ruler pod has a
+    # read-only root filesystem). Same bucket as blocks, distinct storage_prefix so the
+    # two don't collide (Mimir refuses to start on same bucket + same prefix).
+    ruler_storage:
+      backend: s3
+      storage_prefix: ruler
+      s3:
+        bucket_name: ${mimir_chunks_bucket}
+        insecure: false
+        endpoint: s3.ap-south-2.amazonaws.com
     frontend:
       log_queries_longer_than: 10s
       grpc_client_config:
@@ -61,6 +71,10 @@ mimir:
       max_global_series_per_metric: 0
       max_global_series_per_user: 0
       max_label_names_per_series: 100
+      # mimir-mixin recording groups (mimir_querier_api, mimir_ingester_queries) ship 21
+      # rules/group, over Mimir's default of 20. Raise the cap (bounds rules/group only —
+      # not ingestion or series). Tenant-wide (multitenancy on).
+      ruler_max_rules_per_rule_group: 30
       align_queries_with_step: true
       compactor_blocks_retention_period: 3h
     memberlist:

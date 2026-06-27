@@ -6,6 +6,7 @@ resource "helm_release" "mimir" {
   namespace        = var.namespace
   create_namespace = true
   timeout          = 300
+  recreate_pods    = false
 
   values = [
     templatefile("${path.module}/manifests/default.yaml", {

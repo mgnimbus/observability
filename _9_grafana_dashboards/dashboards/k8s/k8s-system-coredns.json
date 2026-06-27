@@ -1427,7 +1427,7 @@
           "type": "prometheus",
           "uid": "${datasource}"
         },
-        "definition": "label_values(kube_node_info,cluster)",
+        "definition": "label_values(kube_node_info,k8s_cluster_id)",
         "hide": 0,
         "includeAll": false,
         "multi": false,
@@ -1435,7 +1435,7 @@
         "options": [],
         "query": {
           "qryType": 1,
-          "query": "label_values(kube_node_info,cluster)",
+          "query": "label_values(kube_node_info,k8s_cluster_id)",
           "refId": "PrometheusVariableQueryEditor-VariableQuery"
         },
         "refresh": 1,
@@ -1455,7 +1455,7 @@
           "type": "prometheus",
           "uid": "${datasource}"
         },
-        "definition": "label_values(up{job=\"$job\", cluster=\"$cluster\"},instance)",
+        "definition": "label_values(up{job=\"$job\", k8s_cluster_id=\"$cluster\"},instance)",
         "hide": 0,
         "includeAll": true,
         "label": "",
@@ -1464,7 +1464,7 @@
         "options": [],
         "query": {
           "qryType": 1,
-          "query": "label_values(up{job=\"$job\", cluster=\"$cluster\"},instance)",
+          "query": "label_values(up{job=\"$job\", k8s_cluster_id=\"$cluster\"},instance)",
           "refId": "PrometheusVariableQueryEditor-VariableQuery"
         },
         "refresh": 1,
@@ -1487,7 +1487,7 @@
           "type": "prometheus",
           "uid": "${datasource}"
         },
-        "definition": "label_values(coredns_dns_requests_total{cluster=\"$cluster\"}, proto)",
+        "definition": "label_values(coredns_dns_requests_total{k8s_cluster_id=\"$cluster\"}, proto)",
         "hide": 0,
         "includeAll": false,
         "label": "",
@@ -1495,7 +1495,7 @@
         "name": "protocol",
         "options": [],
         "query": {
-          "query": "label_values(coredns_dns_requests_total{cluster=\"$cluster\"}, proto)",
+          "query": "label_values(coredns_dns_requests_total{k8s_cluster_id=\"$cluster\"}, proto)",
           "refId": "StandardVariableQuery"
         },
         "refresh": 1,
@@ -1568,7 +1568,7 @@
           "type": "prometheus",
           "uid": "${datasource}"
         },
-        "definition": "label_values(coredns_build_info{cluster=\"$cluster\"},job)",
+        "definition": "label_values(coredns_build_info{k8s_cluster_id=\"$cluster\"},job)",
         "hide": 0,
         "includeAll": false,
         "multi": true,
@@ -1576,7 +1576,7 @@
         "options": [],
         "query": {
           "qryType": 1,
-          "query": "label_values(coredns_build_info{cluster=\"$cluster\"},job)",
+          "query": "label_values(coredns_build_info{k8s_cluster_id=\"$cluster\"},job)",
           "refId": "PrometheusVariableQueryEditor-VariableQuery"
         },
         "refresh": 1,

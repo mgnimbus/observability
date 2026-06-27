@@ -188,7 +188,7 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "sum(rate(container_cpu_usage_seconds_total{namespace=~\"$namespace\", image!=\"\", cluster=\"$cluster\"}[$__rate_interval])) / sum(machine_cpu_cores{cluster=\"$cluster\"})",
+          "expr": "sum(rate(container_cpu_usage_seconds_total{namespace=~\"$namespace\", image!=\"\", k8s_cluster_id=\"$cluster\"}[$__rate_interval])) / sum(machine_cpu_cores{k8s_cluster_id=\"$cluster\"})",
           "instant": true,
           "interval": "",
           "legendFormat": "",
@@ -262,7 +262,7 @@
             "uid": "${datasource}"
           },
           "exemplar": true,
-          "expr": "sum(container_memory_working_set_bytes{namespace=~\"$namespace\", image!=\"\", cluster=\"$cluster\"}) / sum(machine_memory_bytes{cluster=\"$cluster\"})",
+          "expr": "sum(container_memory_working_set_bytes{namespace=~\"$namespace\", image!=\"\", k8s_cluster_id=\"$cluster\"}) / sum(machine_memory_bytes{k8s_cluster_id=\"$cluster\"})",
           "interval": "",
           "legendFormat": "",
           "refId": "A"
@@ -364,7 +364,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum(kube_pod_info{namespace=~\"$namespace\", cluster=\"$cluster\"})",
+          "expr": "sum(kube_pod_info{namespace=~\"$namespace\", k8s_cluster_id=\"$cluster\"})",
           "interval": "",
           "legendFormat": "Running Pods",
           "refId": "A"
@@ -374,7 +374,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum(kube_service_info{namespace=~\"$namespace\", cluster=\"$cluster\"})",
+          "expr": "sum(kube_service_info{namespace=~\"$namespace\", k8s_cluster_id=\"$cluster\"})",
           "interval": "",
           "legendFormat": "Services",
           "refId": "B"
@@ -384,7 +384,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum(kube_ingress_info{namespace=~\"$namespace\", cluster=\"$cluster\"})",
+          "expr": "sum(kube_ingress_info{namespace=~\"$namespace\", k8s_cluster_id=\"$cluster\"})",
           "interval": "",
           "legendFormat": "Ingresses",
           "refId": "C"
@@ -394,7 +394,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum(kube_deployment_labels{namespace=~\"$namespace\", cluster=\"$cluster\"})",
+          "expr": "sum(kube_deployment_labels{namespace=~\"$namespace\", k8s_cluster_id=\"$cluster\"})",
           "interval": "",
           "legendFormat": "Deployments",
           "refId": "D"
@@ -404,7 +404,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum(kube_statefulset_labels{namespace=~\"$namespace\", cluster=\"$cluster\"})",
+          "expr": "sum(kube_statefulset_labels{namespace=~\"$namespace\", k8s_cluster_id=\"$cluster\"})",
           "interval": "",
           "legendFormat": "Statefulsets",
           "refId": "E"
@@ -414,7 +414,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum(kube_daemonset_labels{namespace=~\"$namespace\", cluster=\"$cluster\"})",
+          "expr": "sum(kube_daemonset_labels{namespace=~\"$namespace\", k8s_cluster_id=\"$cluster\"})",
           "interval": "",
           "legendFormat": "Daemonsets",
           "refId": "F"
@@ -424,7 +424,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum(kube_persistentvolumeclaim_info{namespace=~\"$namespace\", cluster=\"$cluster\"})",
+          "expr": "sum(kube_persistentvolumeclaim_info{namespace=~\"$namespace\", k8s_cluster_id=\"$cluster\"})",
           "interval": "",
           "legendFormat": "Persistent Volume Claims",
           "refId": "G"
@@ -434,7 +434,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum(kube_hpa_labels{namespace=~\"$namespace\", cluster=\"$cluster\"})",
+          "expr": "sum(kube_hpa_labels{namespace=~\"$namespace\", k8s_cluster_id=\"$cluster\"})",
           "interval": "",
           "legendFormat": "Horizontal Pod Autoscalers",
           "refId": "H"
@@ -444,7 +444,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum(kube_configmap_info{namespace=~\"$namespace\", cluster=\"$cluster\"})",
+          "expr": "sum(kube_configmap_info{namespace=~\"$namespace\", k8s_cluster_id=\"$cluster\"})",
           "interval": "",
           "legendFormat": "Configmaps",
           "refId": "I"
@@ -454,7 +454,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum(kube_secret_info{namespace=~\"$namespace\", cluster=\"$cluster\"})",
+          "expr": "sum(kube_secret_info{namespace=~\"$namespace\", k8s_cluster_id=\"$cluster\"})",
           "interval": "",
           "legendFormat": "Secrets",
           "refId": "J"
@@ -464,7 +464,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum(kube_networkpolicy_labels{namespace=~\"$namespace\", cluster=\"$cluster\"})",
+          "expr": "sum(kube_networkpolicy_labels{namespace=~\"$namespace\", k8s_cluster_id=\"$cluster\"})",
           "interval": "",
           "legendFormat": "Network Policies",
           "refId": "K"
@@ -529,7 +529,7 @@
           },
           "editorMode": "code",
           "exemplar": true,
-          "expr": "sum(rate(container_cpu_usage_seconds_total{namespace=~\"$namespace\", image!=\"\", cluster=\"$cluster\"}[$__rate_interval]))",
+          "expr": "sum(rate(container_cpu_usage_seconds_total{namespace=~\"$namespace\", image!=\"\", k8s_cluster_id=\"$cluster\"}[$__rate_interval]))",
           "interval": "",
           "legendFormat": "Real",
           "range": true,
@@ -541,7 +541,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "sum(kube_pod_container_resource_requests{namespace=~\"$namespace\", resource=\"cpu\", cluster=\"$cluster\"} and on(namespace, pod) max by (namespace, pod) (kube_pod_status_phase{phase=\"Running\", namespace=~\"$namespace\", cluster=\"$cluster\"} == 1))",
+          "expr": "sum(kube_pod_container_resource_requests{namespace=~\"$namespace\", resource=\"cpu\", k8s_cluster_id=\"$cluster\"} and on(namespace, pod) max by (namespace, pod) (kube_pod_status_phase{phase=\"Running\", namespace=~\"$namespace\", k8s_cluster_id=\"$cluster\"} == 1))",
           "hide": false,
           "legendFormat": "Requests",
           "range": true,
@@ -553,7 +553,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "sum(kube_pod_container_resource_limits{namespace=~\"$namespace\", resource=\"cpu\", cluster=\"$cluster\"} and on(namespace, pod) max by (namespace, pod) (kube_pod_status_phase{phase=\"Running\", namespace=~\"$namespace\", cluster=\"$cluster\"} == 1))",
+          "expr": "sum(kube_pod_container_resource_limits{namespace=~\"$namespace\", resource=\"cpu\", k8s_cluster_id=\"$cluster\"} and on(namespace, pod) max by (namespace, pod) (kube_pod_status_phase{phase=\"Running\", namespace=~\"$namespace\", k8s_cluster_id=\"$cluster\"} == 1))",
           "hide": false,
           "legendFormat": "Limits",
           "range": true,
@@ -565,7 +565,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "sum(machine_cpu_cores{cluster=\"$cluster\"})",
+          "expr": "sum(machine_cpu_cores{k8s_cluster_id=\"$cluster\"})",
           "hide": false,
           "legendFormat": "Cluster Total",
           "range": true,
@@ -631,7 +631,7 @@
           },
           "editorMode": "code",
           "exemplar": true,
-          "expr": "sum(container_memory_working_set_bytes{namespace=~\"$namespace\", image!=\"\", cluster=\"$cluster\"})",
+          "expr": "sum(container_memory_working_set_bytes{namespace=~\"$namespace\", image!=\"\", k8s_cluster_id=\"$cluster\"})",
           "interval": "",
           "legendFormat": "Real",
           "range": true,
@@ -643,7 +643,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "sum(kube_pod_container_resource_requests{namespace=~\"$namespace\", resource=\"memory\", cluster=\"$cluster\"} and on(namespace, pod) max by (namespace, pod) (kube_pod_status_phase{phase=\"Running\", namespace=~\"$namespace\", cluster=\"$cluster\"} == 1))",
+          "expr": "sum(kube_pod_container_resource_requests{namespace=~\"$namespace\", resource=\"memory\", k8s_cluster_id=\"$cluster\"} and on(namespace, pod) max by (namespace, pod) (kube_pod_status_phase{phase=\"Running\", namespace=~\"$namespace\", k8s_cluster_id=\"$cluster\"} == 1))",
           "hide": false,
           "legendFormat": "Requests",
           "range": true,
@@ -655,7 +655,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "sum(kube_pod_container_resource_limits{namespace=~\"$namespace\", resource=\"memory\", cluster=\"$cluster\"} and on(namespace, pod) max by (namespace, pod) (kube_pod_status_phase{phase=\"Running\", namespace=~\"$namespace\", cluster=\"$cluster\"} == 1))",
+          "expr": "sum(kube_pod_container_resource_limits{namespace=~\"$namespace\", resource=\"memory\", k8s_cluster_id=\"$cluster\"} and on(namespace, pod) max by (namespace, pod) (kube_pod_status_phase{phase=\"Running\", namespace=~\"$namespace\", k8s_cluster_id=\"$cluster\"} == 1))",
           "hide": false,
           "legendFormat": "Limits",
           "range": true,
@@ -667,7 +667,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "sum(machine_memory_bytes{cluster=\"$cluster\"})",
+          "expr": "sum(machine_memory_bytes{k8s_cluster_id=\"$cluster\"})",
           "hide": false,
           "legendFormat": "Cluster Total",
           "range": true,
@@ -783,7 +783,7 @@
           },
           "editorMode": "code",
           "exemplar": true,
-          "expr": "sum(rate(container_cpu_usage_seconds_total{namespace=~\"$namespace\", image!=\"\", pod=~\"${created_by}.*\", cluster=\"$cluster\"}[$__rate_interval])) by (pod)",
+          "expr": "sum(rate(container_cpu_usage_seconds_total{namespace=~\"$namespace\", image!=\"\", pod=~\"${created_by}.*\", k8s_cluster_id=\"$cluster\"}[$__rate_interval])) by (pod)",
           "interval": "$resolution",
           "legendFormat": "{{ pod }}",
           "range": true,
@@ -882,7 +882,7 @@
           },
           "editorMode": "code",
           "exemplar": true,
-          "expr": "sum(container_memory_working_set_bytes{namespace=~\"$namespace\", image!=\"\", pod=~\"${created_by}.*\", cluster=\"$cluster\"}) by (pod)",
+          "expr": "sum(container_memory_working_set_bytes{namespace=~\"$namespace\", image!=\"\", pod=~\"${created_by}.*\", k8s_cluster_id=\"$cluster\"}) by (pod)",
           "interval": "$resolution",
           "legendFormat": "{{ pod }}",
           "range": true,
@@ -992,7 +992,7 @@
           },
           "editorMode": "code",
           "exemplar": true,
-          "expr": "sum(rate(container_cpu_cfs_throttled_seconds_total{namespace=~\"$namespace\", image!=\"\", pod=~\"${created_by}.*\", cluster=\"$cluster\"}[$__rate_interval])) by (pod) > 0",
+          "expr": "sum(rate(container_cpu_cfs_throttled_seconds_total{namespace=~\"$namespace\", image!=\"\", pod=~\"${created_by}.*\", k8s_cluster_id=\"$cluster\"}[$__rate_interval])) by (pod) > 0",
           "interval": "$resolution",
           "legendFormat": "{{ pod }}",
           "range": true,
@@ -1110,7 +1110,7 @@
           },
           "editorMode": "code",
           "exemplar": true,
-          "expr": "sum(kube_pod_status_qos_class{namespace=~\"$namespace\", cluster=\"$cluster\"}) by (qos_class)",
+          "expr": "sum(kube_pod_status_qos_class{namespace=~\"$namespace\", k8s_cluster_id=\"$cluster\"}) by (qos_class)",
           "interval": "",
           "legendFormat": "{{ qos_class }} pods",
           "range": true,
@@ -1122,7 +1122,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "sum(kube_pod_info{namespace=~\"$namespace\", cluster=\"$cluster\"})",
+          "expr": "sum(kube_pod_info{namespace=~\"$namespace\", k8s_cluster_id=\"$cluster\"})",
           "hide": false,
           "legendFormat": "Total pods",
           "range": true,
@@ -1227,7 +1227,7 @@
           },
           "editorMode": "code",
           "exemplar": true,
-          "expr": "sum(kube_pod_status_reason{cluster=\"$cluster\"}) by (reason)",
+          "expr": "sum(kube_pod_status_reason{k8s_cluster_id=\"$cluster\"}) by (reason)",
           "interval": "",
           "legendFormat": "{{ reason }}",
           "range": true,
@@ -1333,7 +1333,7 @@
           },
           "editorMode": "code",
           "exemplar": true,
-          "expr": "sum(increase(container_oom_events_total{namespace=~\"${namespace}\", cluster=\"$cluster\"}[$__rate_interval])) by (namespace, pod) > 0",
+          "expr": "sum(increase(container_oom_events_total{namespace=~\"${namespace}\", k8s_cluster_id=\"$cluster\"}[$__rate_interval])) by (namespace, pod) > 0",
           "interval": "",
           "legendFormat": "namespace: {{ namespace }} - pod: {{ pod }}",
           "range": true,
@@ -1439,7 +1439,7 @@
           },
           "editorMode": "code",
           "exemplar": true,
-          "expr": "sum(increase(kube_pod_container_status_restarts_total{namespace=~\"${namespace}\", cluster=\"$cluster\"}[$__rate_interval])) by (namespace, pod) > 0",
+          "expr": "sum(increase(kube_pod_container_status_restarts_total{namespace=~\"${namespace}\", k8s_cluster_id=\"$cluster\"}[$__rate_interval])) by (namespace, pod) > 0",
           "interval": "",
           "legendFormat": "namespace: {{ namespace }} - pod: {{ pod }}",
           "range": true,
@@ -1538,7 +1538,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "sum(kube_pod_container_status_ready{namespace=~\"$namespace\", pod=~\"${created_by}.*\", cluster=\"$cluster\"})",
+          "expr": "sum(kube_pod_container_status_ready{namespace=~\"$namespace\", pod=~\"${created_by}.*\", k8s_cluster_id=\"$cluster\"})",
           "interval": "",
           "legendFormat": "Ready",
           "range": true,
@@ -1550,7 +1550,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "sum(kube_pod_container_status_running{namespace=~\"$namespace\", pod=~\"${created_by}.*\", cluster=\"$cluster\"})",
+          "expr": "sum(kube_pod_container_status_running{namespace=~\"$namespace\", pod=~\"${created_by}.*\", k8s_cluster_id=\"$cluster\"})",
           "interval": "",
           "legendFormat": "Running",
           "range": true,
@@ -1561,7 +1561,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum(kube_pod_container_status_waiting{namespace=~\"$namespace\", cluster=\"$cluster\"})",
+          "expr": "sum(kube_pod_container_status_waiting{namespace=~\"$namespace\", k8s_cluster_id=\"$cluster\"})",
           "interval": "",
           "legendFormat": "Waiting",
           "refId": "C"
@@ -1571,7 +1571,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum(kube_pod_container_status_restarts_total{namespace=~\"$namespace\", cluster=\"$cluster\"})",
+          "expr": "sum(kube_pod_container_status_restarts_total{namespace=~\"$namespace\", k8s_cluster_id=\"$cluster\"})",
           "interval": "",
           "legendFormat": "Restarts Total",
           "refId": "D"
@@ -1581,7 +1581,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum(kube_pod_container_status_terminated{namespace=~\"$namespace\", cluster=\"$cluster\"})",
+          "expr": "sum(kube_pod_container_status_terminated{namespace=~\"$namespace\", k8s_cluster_id=\"$cluster\"})",
           "interval": "",
           "legendFormat": "Terminated",
           "refId": "E"
@@ -1679,7 +1679,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "sum(kube_pod_container_info{namespace=~\"$namespace\", pod=~\"${created_by}.*\", cluster=\"$cluster\"}) by (pod)",
+          "expr": "sum(kube_pod_container_info{namespace=~\"$namespace\", pod=~\"${created_by}.*\", k8s_cluster_id=\"$cluster\"}) by (pod)",
           "interval": "",
           "legendFormat": "{{ pod }}",
           "range": true,
@@ -1778,7 +1778,7 @@
           },
           "editorMode": "code",
           "exemplar": true,
-          "expr": "sum(kube_deployment_status_replicas_available{namespace=~\"$namespace\", cluster=\"$cluster\"}) by (deployment)",
+          "expr": "sum(kube_deployment_status_replicas_available{namespace=~\"$namespace\", k8s_cluster_id=\"$cluster\"}) by (deployment)",
           "interval": "",
           "legendFormat": "{{ deployment }}",
           "range": true,
@@ -1876,7 +1876,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "sum(kube_deployment_status_replicas_unavailable{namespace=~\"$namespace\", pod=~\"${created_by}.*\", cluster=\"$cluster\"}) by (deployment)",
+          "expr": "sum(kube_deployment_status_replicas_unavailable{namespace=~\"$namespace\", pod=~\"${created_by}.*\", k8s_cluster_id=\"$cluster\"}) by (deployment)",
           "interval": "",
           "legendFormat": "{{ deployment }}",
           "range": true,
@@ -1976,7 +1976,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "sum(kube_pod_status_phase{phase!~\"Running|Succeeded\", namespace=~\"$namespace\", cluster=\"$cluster\"}) by (pod) > 0",
+          "expr": "sum(kube_pod_status_phase{phase!~\"Running|Succeeded\", namespace=~\"$namespace\", k8s_cluster_id=\"$cluster\"}) by (pod) > 0",
           "interval": "",
           "legendFormat": "{{ deployment }}",
           "range": true,
@@ -2079,7 +2079,7 @@
             "uid": "${datasource}"
           },
           "editorMode": "code",
-          "expr": "count(rate(container_cpu_usage_seconds_total{namespace=~\"$namespace\", image!=\"\", pod=~\"${created_by}.*\", cluster=\"$cluster\"}[$__rate_interval])) by (image)",
+          "expr": "count(rate(container_cpu_usage_seconds_total{namespace=~\"$namespace\", image!=\"\", pod=~\"${created_by}.*\", k8s_cluster_id=\"$cluster\"}[$__rate_interval])) by (image)",
           "interval": "",
           "legendFormat": "{{ image }}",
           "range": true,
@@ -2195,7 +2195,7 @@
             "uid": "${datasource}"
           },
           "exemplar": true,
-          "expr": "max(kubelet_volume_stats_used_bytes{namespace=~\"$namespace\", cluster=\"$cluster\"}) by (persistentvolumeclaim, namespace) / max(kubelet_volume_stats_capacity_bytes{namespace=~\"$namespace\", cluster=\"$cluster\"}) by (persistentvolumeclaim, namespace)",
+          "expr": "max(kubelet_volume_stats_used_bytes{namespace=~\"$namespace\", k8s_cluster_id=\"$cluster\"}) by (persistentvolumeclaim, namespace) / max(kubelet_volume_stats_capacity_bytes{namespace=~\"$namespace\", k8s_cluster_id=\"$cluster\"}) by (persistentvolumeclaim, namespace)",
           "interval": "",
           "legendFormat": "{{ namespace }} - {{ persistentvolumeclaim }}",
           "refId": "A"
@@ -2293,7 +2293,7 @@
             "uid": "${datasource}"
           },
           "exemplar": true,
-          "expr": "max(kubelet_volume_stats_used_bytes{namespace=~\"$namespace\", cluster=\"$cluster\"}) by (persistentvolumeclaim, namespace)",
+          "expr": "max(kubelet_volume_stats_used_bytes{namespace=~\"$namespace\", k8s_cluster_id=\"$cluster\"}) by (persistentvolumeclaim, namespace)",
           "interval": "",
           "legendFormat": "{{ namespace }} - {{ persistentvolumeclaim }} - Used",
           "refId": "A"
@@ -2304,7 +2304,7 @@
             "uid": "${datasource}"
           },
           "exemplar": true,
-          "expr": "max(kubelet_volume_stats_capacity_bytes{namespace=~\"$namespace\", cluster=\"$cluster\"}) by (persistentvolumeclaim, namespace)",
+          "expr": "max(kubelet_volume_stats_capacity_bytes{namespace=~\"$namespace\", k8s_cluster_id=\"$cluster\"}) by (persistentvolumeclaim, namespace)",
           "hide": false,
           "interval": "",
           "legendFormat": "{{ namespace }} - {{ persistentvolumeclaim }} - Capacity",
@@ -2403,7 +2403,7 @@
             "uid": "${datasource}"
           },
           "exemplar": true,
-          "expr": "1 - (sum(kubelet_volume_stats_inodes_used{namespace=~\"$namespace\", cluster=\"$cluster\"}) by (persistentvolumeclaim) / sum(kubelet_volume_stats_inodes{namespace=~\"$namespace\", cluster=\"$cluster\"}) by (persistentvolumeclaim))",
+          "expr": "1 - (sum(kubelet_volume_stats_inodes_used{namespace=~\"$namespace\", k8s_cluster_id=\"$cluster\"}) by (persistentvolumeclaim) / sum(kubelet_volume_stats_inodes{namespace=~\"$namespace\", k8s_cluster_id=\"$cluster\"}) by (persistentvolumeclaim))",
           "interval": "",
           "legendFormat": "{{ persistentvolumeclaim }}",
           "refId": "A"
@@ -2515,7 +2515,7 @@
           },
           "editorMode": "code",
           "exemplar": true,
-          "expr": "sum(rate(container_network_receive_bytes_total{namespace=~\"$namespace\", pod=~\"${created_by}.*\", cluster=\"$cluster\"}[$__rate_interval])) by (pod)",
+          "expr": "sum(rate(container_network_receive_bytes_total{namespace=~\"$namespace\", pod=~\"${created_by}.*\", k8s_cluster_id=\"$cluster\"}[$__rate_interval])) by (pod)",
           "interval": "$resolution",
           "legendFormat": "Received - {{ pod }}",
           "range": true,
@@ -2528,7 +2528,7 @@
           },
           "editorMode": "code",
           "exemplar": true,
-          "expr": "- sum(rate(container_network_transmit_bytes_total{namespace=~\"$namespace\", pod=~\"${created_by}.*\", cluster=\"$cluster\"}[$__rate_interval])) by (pod)",
+          "expr": "- sum(rate(container_network_transmit_bytes_total{namespace=~\"$namespace\", pod=~\"${created_by}.*\", k8s_cluster_id=\"$cluster\"}[$__rate_interval])) by (pod)",
           "interval": "$resolution",
           "legendFormat": "Transmitted - {{ pod }}",
           "range": true,
@@ -2628,7 +2628,7 @@
           },
           "editorMode": "code",
           "exemplar": true,
-          "expr": "sum(rate(container_network_receive_packets_total{namespace=~\"$namespace\", pod=~\"${created_by}.*\", cluster=\"$cluster\"}[$__rate_interval])) by (pod)",
+          "expr": "sum(rate(container_network_receive_packets_total{namespace=~\"$namespace\", pod=~\"${created_by}.*\", k8s_cluster_id=\"$cluster\"}[$__rate_interval])) by (pod)",
           "interval": "$resolution",
           "legendFormat": "Received - {{ pod }}",
           "range": true,
@@ -2641,7 +2641,7 @@
           },
           "editorMode": "code",
           "exemplar": true,
-          "expr": "- sum(rate(container_network_transmit_packets_total{namespace=~\"$namespace\", pod=~\"${created_by}.*\", cluster=\"$cluster\"}[$__rate_interval])) by (pod)",
+          "expr": "- sum(rate(container_network_transmit_packets_total{namespace=~\"$namespace\", pod=~\"${created_by}.*\", k8s_cluster_id=\"$cluster\"}[$__rate_interval])) by (pod)",
           "interval": "$resolution",
           "legendFormat": "Transmitted - {{ pod }}",
           "range": true,
@@ -2741,7 +2741,7 @@
           },
           "editorMode": "code",
           "exemplar": true,
-          "expr": "sum(rate(container_network_receive_packets_dropped_total{namespace=~\"$namespace\", pod=~\"${created_by}.*\", cluster=\"$cluster\"}[$__rate_interval])) by (pod)",
+          "expr": "sum(rate(container_network_receive_packets_dropped_total{namespace=~\"$namespace\", pod=~\"${created_by}.*\", k8s_cluster_id=\"$cluster\"}[$__rate_interval])) by (pod)",
           "interval": "$resolution",
           "legendFormat": "Received - {{ pod }}",
           "range": true,
@@ -2754,7 +2754,7 @@
           },
           "editorMode": "code",
           "exemplar": true,
-          "expr": "- sum(rate(container_network_transmit_packets_dropped_total{namespace=~\"$namespace\", pod=~\"${created_by}.*\", cluster=\"$cluster\"}[$__rate_interval])) by (pod)",
+          "expr": "- sum(rate(container_network_transmit_packets_dropped_total{namespace=~\"$namespace\", pod=~\"${created_by}.*\", k8s_cluster_id=\"$cluster\"}[$__rate_interval])) by (pod)",
           "interval": "$resolution",
           "legendFormat": "Transmitted - {{ pod }}",
           "range": true,
@@ -2854,7 +2854,7 @@
           },
           "editorMode": "code",
           "exemplar": true,
-          "expr": "sum(rate(container_network_receive_errors_total{namespace=~\"$namespace\", pod=~\"${created_by}.*\", cluster=\"$cluster\"}[$__rate_interval])) by (pod)",
+          "expr": "sum(rate(container_network_receive_errors_total{namespace=~\"$namespace\", pod=~\"${created_by}.*\", k8s_cluster_id=\"$cluster\"}[$__rate_interval])) by (pod)",
           "interval": "$resolution",
           "legendFormat": "Received - {{ pod }}",
           "range": true,
@@ -2867,7 +2867,7 @@
           },
           "editorMode": "code",
           "exemplar": true,
-          "expr": "- sum(rate(container_network_transmit_errors_total{namespace=~\"$namespace\", pod=~\"${created_by}.*\", cluster=\"$cluster\"}[$__rate_interval])) by (pod)",
+          "expr": "- sum(rate(container_network_transmit_errors_total{namespace=~\"$namespace\", pod=~\"${created_by}.*\", k8s_cluster_id=\"$cluster\"}[$__rate_interval])) by (pod)",
           "interval": "$resolution",
           "legendFormat": "Transmitted - {{ pod }}",
           "range": true,
@@ -2906,7 +2906,7 @@
           "type": "prometheus",
           "uid": "${datasource}"
         },
-        "definition": "label_values(kube_node_info,cluster)",
+        "definition": "label_values(kube_node_info,k8s_cluster_id)",
         "hide": 0,
         "includeAll": false,
         "multi": false,
@@ -2914,7 +2914,7 @@
         "options": [],
         "query": {
           "qryType": 1,
-          "query": "label_values(kube_node_info,cluster)",
+          "query": "label_values(kube_node_info,k8s_cluster_id)",
           "refId": "PrometheusVariableQueryEditor-VariableQuery"
         },
         "refresh": 1,
@@ -2930,14 +2930,14 @@
           "type": "prometheus",
           "uid": "${datasource}"
         },
-        "definition": "label_values(kube_pod_info{cluster=\"$cluster\"}, namespace)",
+        "definition": "label_values(kube_pod_info{k8s_cluster_id=\"$cluster\"}, namespace)",
         "hide": 0,
         "includeAll": true,
         "multi": true,
         "name": "namespace",
         "options": [],
         "query": {
-          "query": "label_values(kube_pod_info{cluster=\"$cluster\"}, namespace)",
+          "query": "label_values(kube_pod_info{k8s_cluster_id=\"$cluster\"}, namespace)",
           "refId": "StandardVariableQuery"
         },
         "refresh": 1,
@@ -3003,7 +3003,7 @@
           "type": "prometheus",
           "uid": "${datasource}"
         },
-        "definition": "label_values(kube_pod_info{namespace=~\"$namespace\", cluster=\"$cluster\"},created_by_name)",
+        "definition": "label_values(kube_pod_info{namespace=~\"$namespace\", k8s_cluster_id=\"$cluster\"},created_by_name)",
         "description": "Can be used to filter on a specific deployment, statefulset or deamonset (only relevant panels).",
         "hide": 0,
         "includeAll": true,
@@ -3011,7 +3011,7 @@
         "name": "created_by",
         "options": [],
         "query": {
-          "query": "label_values(kube_pod_info{namespace=~\"$namespace\", cluster=\"$cluster\"},created_by_name)",
+          "query": "label_values(kube_pod_info{namespace=~\"$namespace\", k8s_cluster_id=\"$cluster\"},created_by_name)",
           "refId": "PrometheusVariableQueryEditor-VariableQuery"
         },
         "refresh": 2,
